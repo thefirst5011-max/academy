@@ -1526,16 +1526,22 @@ function formatDateKo(d) {
 // n번째 학습일 날짜 반환 (시작날짜로부터)
 // studyDays: null 또는 [1,3,5] 형태 (1=월~5=금)
 // null이면 기존 방식(월~금 전체) 그대로
-function getStudyDates(startDateStr, count, studyDays) {
+// pausePeriods: [{start:'YYYY-MM-DD', end:'YYYY-MM-DD', reason:'시험'}] — 해당 기간은 학습일에서 제외 (일시정지)
+function isPausedDate(dateStr, pausePeriods) {
+  if (!pausePeriods || !pausePeriods.length) return false;
+  return pausePeriods.some(p => p.start <= dateStr && dateStr <= p.end);
+}
+function getStudyDates(startDateStr, count, studyDays, pausePeriods) {
   const results = [];
   const cur = new Date(startDateStr + 'T00:00:00');
   // studyDays 없거나 빈배열이면 전체 요일(기존 방식)
   const days = (studyDays && studyDays.length > 0) ? studyDays : null;
   let safety = 0;
-  while (results.length < count && safety < 1000) {
+  while (results.length < count && safety < 3000) {
     const dow = cur.getDay(); // 0=일,6=토
     const isTargetDay = days ? days.includes(dow) : true;
-    if (isTargetDay && isStudyDay(cur)) results.push(formatDate(cur));
+    const str = formatDate(cur);
+    if (isTargetDay && isStudyDay(cur) && !isPausedDate(str, pausePeriods)) results.push(str);
     cur.setDate(cur.getDate() + 1);
     safety++;
   }
@@ -1543,8 +1549,8 @@ function getStudyDates(startDateStr, count, studyDays) {
 }
 
 // 마지막 학습일 계산
-function getLastStudyDate(startDateStr, count, studyDays) {
-  const dates = getStudyDates(startDateStr, count, studyDays);
+function getLastStudyDate(startDateStr, count, studyDays, pausePeriods) {
+  const dates = getStudyDates(startDateStr, count, studyDays, pausePeriods);
   return dates.length > 0 ? dates[dates.length - 1] : startDateStr;
 }
 
@@ -1760,7 +1766,7 @@ function renderDashboard() {
     const count = (a.type==='SV'||a.type==='HV') ? (a.sets||0) : (a.lessons||0);
     if (!count) return;
 
-    const endDate = getLastStudyDate(a.startDate, count, a.type==='SV' ? (a.studyDays||null) : null);
+    const endDate = getLastStudyDate(a.startDate, count, a.type==='SV' ? (a.studyDays||null) : null, a.pausePeriods||null);
     // 종료일 기준 오늘과의 차이(일)
     const diffMs  = new Date(endDate) - new Date(today);
     const diffDay = Math.round(diffMs / 86400000); // 음수 = 이미 종료
@@ -2604,7 +2610,7 @@ function isAssignDone(a) {
   if (a.type === 'SV' || a.type === 'HV') {
     // 보카: 오늘이 마지막 학습일을 지났으면 완료
     if (!a.sets || !a.startDate) return false; // 오류9: sets 없으면 진행중 처리
-    const last = getLastStudyDate(a.startDate, a.sets, a.type==='SV' ? (a.studyDays||null) : null);
+    const last = getLastStudyDate(a.startDate, a.sets, a.type==='SV' ? (a.studyDays||null) : null, a.pausePeriods||null);
     return last < today;
   } else {
     // 교재: endDate 있고 오늘보다 과거면 완료
@@ -2668,7 +2674,7 @@ function renderAssignPage() {
             const isVoca     = a.type==='SV'||a.type==='HV';
             const isTextbook = a.type==='MAIN'||a.type==='SUB';
             const endDate = isVoca
-              ? (a.sets ? getLastStudyDate(a.startDate, a.sets, a.type==='SV' ? (a.studyDays||null) : null) : '—')
+              ? (a.sets ? getLastStudyDate(a.startDate, a.sets, a.type==='SV' ? (a.studyDays||null) : null, a.pausePeriods||null) : '—')
               : (a.endDate || null);
 
             const chipStart = `<span style="background:#F0EEE8;color:#5A5955;font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px">${a.startDate} 시작</span>`;
@@ -2696,13 +2702,28 @@ function renderAssignPage() {
               ].filter(Boolean).join('');
             }
 
+            // 일시정지 기간 표시 칩 (시험기간 등)
+            const pausePeriods = a.pausePeriods || [];
+            const pauseChips = pausePeriods.map((p, idx) => `
+              <span style="background:#FCF0EE;color:#9C2418;font-size:10px;font-weight:700;
+                padding:2px 7px;border-radius:4px;display:inline-flex;align-items:center;gap:3px">
+                ⏸ ${p.reason || '일시정지'} ${p.start}~${p.end}
+                <span onclick="removePausePeriod('${a.id}',${idx})"
+                  style="cursor:pointer;font-weight:900;padding:0 2px" title="삭제">×</span>
+              </span>`).join('');
+
+            const pauseBtn = isVoca
+              ? `<button class="btn btn-ghost btn-sm" style="padding:2px 8px;font-size:10px;color:#9C2418"
+                   onclick="openPausePeriodInput('${a.id}')">⏸ 시험/일시정지</button>`
+              : '';
+
             return `
               <div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;
                 padding:8px 12px;margin:4px 10px;background:#FFFFFF;
                 border:1px solid #E2DFD8;border-radius:8px">
                 <span class="type-chip ${TYPE_CHIPS[a.type]}">${TYPE_LABELS[a.type]}</span>
                 <span style="font-weight:700;font-size:13px;color:var(--text)">${a.book}</span>
-                ${chipStart}${chipEnd}${extraChips}
+                ${chipStart}${chipEnd}${extraChips}${pauseChips}
                 <span id="enddate-inline-${a.id}" style="display:none;align-items:center;gap:4px">
                   <input type="date" id="enddate-input-${a.id}"
                     style="border:1px solid var(--border2);border-radius:5px;padding:2px 6px;
@@ -2713,8 +2734,25 @@ function renderAssignPage() {
                   <button class="btn btn-ghost btn-sm" style="padding:2px 8px;font-size:10px"
                     onclick="cancelEndDate('${a.id}')">취소</button>
                 </span>
+                <span id="pause-inline-${a.id}" style="display:none;align-items:center;gap:4px;flex-wrap:wrap;
+                  width:100%;padding-top:4px;border-top:1px dashed var(--border)">
+                  <input type="date" id="pause-start-${a.id}" min="${a.startDate}"
+                    style="border:1px solid var(--border2);border-radius:5px;padding:2px 6px;
+                      font-size:11px;font-family:inherit" placeholder="시작">
+                  <span style="font-size:11px;color:var(--text3)">~</span>
+                  <input type="date" id="pause-end-${a.id}" min="${a.startDate}"
+                    style="border:1px solid var(--border2);border-radius:5px;padding:2px 6px;
+                      font-size:11px;font-family:inherit" placeholder="종료">
+                  <input type="text" id="pause-reason-${a.id}" placeholder="사유(예: 시험)"
+                    style="border:1px solid var(--border2);border-radius:5px;padding:2px 6px;
+                      font-size:11px;font-family:inherit;width:100px">
+                  <button class="btn btn-success btn-sm" style="padding:2px 8px;font-size:10px"
+                    onclick="savePausePeriod('${a.id}')">추가</button>
+                  <button class="btn btn-ghost btn-sm" style="padding:2px 8px;font-size:10px"
+                    onclick="cancelPausePeriod('${a.id}')">취소</button>
+                </span>
                 <div style="margin-left:auto;display:flex;gap:4px;flex-shrink:0">
-                  ${endDateBtn}
+                  ${endDateBtn}${pauseBtn}
                   <button class="btn btn-ghost btn-sm" style="padding:3px 8px;font-size:10px"
                     onclick="openEditAssignModal('${a.id}')">✏️ 수정</button>
                   <button class="btn btn-danger btn-sm" style="padding:3px 8px;font-size:10px"
@@ -2882,7 +2920,7 @@ function renderAssignTypeView(showClasses) {
           const total = a.sets || 0;
           let doneSets = 0;
           if (total > 0) {
-            const allDates = getStudyDates(a.startDate, total, a.type==='SV' ? (a.studyDays||null) : null);
+            const allDates = getStudyDates(a.startDate, total, a.type==='SV' ? (a.studyDays||null) : null, a.pausePeriods||null);
             doneSets = allDates.filter(d => d <= today).length;
           }
           const pct  = total > 0 ? Math.round(doneSets / total * 100) : 0;
@@ -3019,6 +3057,60 @@ function clearEndDate(assignId) {
   assign.endDate = null;
   saveAssignmentsFb();
   toast('종료일이 삭제되었습니다. 진행중으로 변경됩니다.', 'warning');
+  showPage(currentPage);
+}
+
+// ── 보카 일시정지 기간 (시험기간 등) ─────────────────────────
+function openPausePeriodInput(assignId) {
+  const wrap = document.getElementById('pause-inline-' + assignId);
+  if (!wrap) return;
+  wrap.style.display = 'flex';
+  const startInput = document.getElementById('pause-start-' + assignId);
+  if (startInput) setTimeout(() => startInput.focus(), 50);
+}
+
+function cancelPausePeriod(assignId) {
+  const wrap = document.getElementById('pause-inline-' + assignId);
+  if (wrap) wrap.style.display = 'none';
+}
+
+function savePausePeriod(assignId) {
+  const startEl  = document.getElementById('pause-start-'  + assignId);
+  const endEl    = document.getElementById('pause-end-'    + assignId);
+  const reasonEl = document.getElementById('pause-reason-' + assignId);
+  if (!startEl || !endEl) return;
+
+  const start  = startEl.value;
+  const end    = endEl.value;
+  const reason = (reasonEl?.value || '').trim() || '시험';
+
+  if (!start || !end) { toast('시작일과 종료일을 모두 선택하세요.', 'error'); return; }
+  if (end < start) { toast('종료일이 시작일보다 빠릅니다.', 'error'); return; }
+
+  const assign = DB.assignments.find(a => a.id === assignId);
+  if (!assign) { toast('과제를 찾을 수 없습니다.', 'error'); return; }
+
+  if (!assign.pausePeriods) assign.pausePeriods = [];
+
+  // 기존 기간과 겹치는지 확인
+  const overlap = assign.pausePeriods.some(p => start <= p.end && end >= p.start);
+  if (overlap) { toast('이미 등록된 일시정지 기간과 겹칩니다.', 'error'); return; }
+
+  assign.pausePeriods.push({ start, end, reason });
+  assign.pausePeriods.sort((a,b) => a.start.localeCompare(b.start));
+
+  saveAssignmentsFb();
+  toast(`일시정지 기간(${start}~${end})이 추가되었습니다. 이후 학습일이 자동으로 밀립니다.`, 'success');
+  showPage(currentPage);
+}
+
+function removePausePeriod(assignId, idx) {
+  const assign = DB.assignments.find(a => a.id === assignId);
+  if (!assign || !assign.pausePeriods) return;
+  if (!confirm('이 일시정지 기간을 삭제할까요?')) return;
+  assign.pausePeriods.splice(idx, 1);
+  saveAssignmentsFb();
+  toast('일시정지 기간이 삭제되었습니다.', 'success');
   showPage(currentPage);
 }
 
@@ -3365,7 +3457,7 @@ function renderStudentDetailPage() {
           if (a.recall)   chips += `<span class="chip-sm">리콜 ${a.recall}</span>`;
           if (a.test)     chips += `<span class="chip-sm">테스트 ${a.test}점${a.testType?' · '+a.testType:''}</span>`;
           if (!done && tot > 0) {
-            const allD = getStudyDates(a.startDate, tot, a.type==='SV'?(a.studyDays||null):null);
+            const allD = getStudyDates(a.startDate, tot, a.type==='SV'?(a.studyDays||null):null, a.pausePeriods||null);
             const ds   = allD.filter(d => d <= today).length;
             const pct  = Math.round(ds / tot * 100);
             const barC = pct >= 70 ? '#2B7FD4' : pct >= 30 ? '#D4820F' : '#B83224';
@@ -3381,7 +3473,7 @@ function renderStudentDetailPage() {
 
         let dateRange = a.startDate || '';
         if (isVoca && a.sets && a.startDate) {
-          const last = getLastStudyDate(a.startDate, a.sets, a.type==='SV'?(a.studyDays||null):null);
+          const last = getLastStudyDate(a.startDate, a.sets, a.type==='SV'?(a.studyDays||null):null, a.pausePeriods||null);
           if (last) dateRange += ` ~ ${last}`;
         } else if (!isVoca && a.endDate) {
           dateRange += ` ~ ${a.endDate}`;
@@ -3542,7 +3634,7 @@ function renderStatusPage() {
 
     const active = list.find(a => {
       if (!a.startDate || !a.sets) return false;
-      const last = getLastStudyDate(a.startDate, a.sets, a.type==='SV' ? (a.studyDays||null) : null);
+      const last = getLastStudyDate(a.startDate, a.sets, a.type==='SV' ? (a.studyDays||null) : null, a.pausePeriods||null);
       return a.startDate <= today && last >= today;
     });
 
@@ -3553,7 +3645,7 @@ function renderStatusPage() {
     const total   = target.sets || 0;
     let doneSets  = 0;
     if (!isDone && total > 0) {
-      const allDates = getStudyDates(target.startDate, total, target.type==='SV' ? (target.studyDays||null) : null);
+      const allDates = getStudyDates(target.startDate, total, target.type==='SV' ? (target.studyDays||null) : null, target.pausePeriods||null);
       doneSets = allDates.filter(d => d <= today).length;
     } else if (isDone) { doneSets = total; }
 
@@ -3794,7 +3886,7 @@ function renderHistoryPage() {
         // 보카: 세트수로 계산
         const count = a.sets || 0;
         if (count > 0) {
-          const end = getLastStudyDate(a.startDate, count, a.type==='SV' ? (a.studyDays||null) : null);
+          const end = getLastStudyDate(a.startDate, count, a.type==='SV' ? (a.studyDays||null) : null, a.pausePeriods||null);
           if (!maxDate || end > maxDate) maxDate = end;
         }
       } else {
@@ -3834,7 +3926,7 @@ function renderHistoryPage() {
         // 보카: 세트수 기반 날짜 범위
         const count = assign.sets || 0;
         if (count <= 0) continue;
-        const studyDates = getStudyDates(assign.startDate, count, type==='SV' ? (assign.studyDays||null) : null);
+        const studyDates = getStudyDates(assign.startDate, count, type==='SV' ? (assign.studyDays||null) : null, assign.pausePeriods||null);
         const idx = studyDates.indexOf(dateStr);
         if (idx < 0) continue;
         const num = String(idx + 1).padStart(2, '0');
@@ -4458,7 +4550,7 @@ function renderClassSummaryPage() {
         if (!a.sets) return false;
         try {
           const last = getLastStudyDate(a.startDate, a.sets,
-            type==='SV' ? (a.studyDays||null) : null);
+            type==='SV' ? (a.studyDays||null) : null, a.pausePeriods||null);
           return last && last >= today;
         } catch(e) { return false; }
       }
@@ -5022,8 +5114,8 @@ function getSelectedStudentIds() {
 // ── 날짜 범위 겹침 체크 ───────────────────────────────────
 function datesOverlap(a, b) {
   if (!a.startDate || !b.startDate || !a.count || !b.count) return false;
-  const aEnd = getLastStudyDate(a.startDate, a.count, a.studyDays||null);
-  const bEnd = getLastStudyDate(b.startDate, b.count, b.studyDays||null);
+  const aEnd = getLastStudyDate(a.startDate, a.count, a.studyDays||null, a.pausePeriods||null);
+  const bEnd = getLastStudyDate(b.startDate, b.count, b.studyDays||null, b.pausePeriods||null);
   return a.startDate <= bEnd && b.startDate <= aEnd;
 }
 
@@ -5117,7 +5209,7 @@ function saveAssignConfirm() {
       const overlapping = existingList.find(ex => {
         const exCount = ex.sets || 0;
         return datesOverlap(
-          {startDate: ex.startDate, count: exCount, studyDays: ex.studyDays||null},
+          {startDate: ex.startDate, count: exCount, studyDays: ex.studyDays||null, pausePeriods: ex.pausePeriods||null},
           {startDate, count: newCount, studyDays: studyDays||null}
         );
       });
@@ -5386,7 +5478,7 @@ function saveEditAssign(bulkConfirmed) {
     );
     const overlapping = existingList.find(ex =>
       datesOverlap(
-        {startDate: ex.startDate, count: ex.sets||0, studyDays: ex.studyDays||null},
+        {startDate: ex.startDate, count: ex.sets||0, studyDays: ex.studyDays||null, pausePeriods: ex.pausePeriods||null},
         {startDate, count: newCount, studyDays: studyDays||null}
       )
     );
@@ -5486,7 +5578,7 @@ function saveEditAssign(bulkConfirmed) {
       );
       const overlapping = existingList.find(ex =>
         datesOverlap(
-          {startDate: ex.startDate, count: ex.sets||0, studyDays: ex.studyDays||null},
+          {startDate: ex.startDate, count: ex.sets||0, studyDays: ex.studyDays||null, pausePeriods: ex.pausePeriods||null},
           {startDate, count: sets, studyDays: studyDays||null}
         )
       );
