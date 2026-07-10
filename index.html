@@ -335,6 +335,11 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .sum-target-all{font-size:11px;font-weight:700;padding:2px 9px;border-radius:4px;
   background:var(--surface2);color:var(--text2);border:1px solid var(--border2)}
 .sum-target-stu{font-size:12px;color:var(--text2)}
+.sum-td.memo{white-space:normal;min-width:150px}
+.sum-memo-input{width:100%;border:1px solid var(--border);border-radius:6px;padding:5px 8px;
+  font-size:11px;font-family:inherit;background:var(--surface2);color:var(--text2)}
+.sum-memo-input:focus{outline:none;border-color:var(--blue-mid);background:var(--surface)}
+.sum-memo-input::placeholder{color:var(--text3)}
 .empty-state{text-align:center;padding:48px 20px;color:var(--text3)}
 .empty-icon{font-size:36px;margin-bottom:12px}
 .empty-title{font-size:15px;font-weight:700;color:var(--text2);margin-bottom:6px}
@@ -939,6 +944,7 @@ function getDefaultData() {
     stuPlans:       {},
     bookFavorites:  {},
     bookLibrary:    {},
+    summaryMemos:   {},
     attendance:     {},
     events:      [], // 학원 일정
   };
@@ -968,6 +974,7 @@ function sanitizeDB(parsed) {
     classMemos:     toObj(parsed.classMemos),
     stuPlans:       toObj(parsed.stuPlans),
     bookFavorites:  toObj(parsed.bookFavorites),
+    summaryMemos:   toObj(parsed.summaryMemos),
     bookLibrary:    (() => {
       const saved = toObj(parsed.bookLibrary);
       const lib   = {};
@@ -1043,6 +1050,20 @@ function saveStuPlanFb(stuId) {
 function saveBookLibraryFb(type) {
   const val = (DB.bookLibrary && DB.bookLibrary[type]) || null;
   _fbUpdate({ [`${FB_PATH}/bookLibrary/${type}`]: (val && val.length > 0) ? val : null });
+}
+
+// ── 수업 요약 메모 (교재 한 줄당 메모 1개, 반+유형+교재명 조합 키) ──
+function saveSummaryMemo(key, val) {
+  if (!DB.summaryMemos) DB.summaryMemos = {};
+  const trimmed = (val || '').trim();
+  if (trimmed) DB.summaryMemos[key] = trimmed;
+  else delete DB.summaryMemos[key];
+  _fbUpdate({ [`${FB_PATH}/summaryMemos/${key}`]: trimmed || null });
+}
+function summaryMemoKey(clsId, type, book) {
+  // Firebase 경로에 쓸 수 없는 문자(. # $ [ ] /) 제거
+  const safeBook = book.replace(/[.#$\[\]\/]/g, '_');
+  return `${clsId}__${type}__${safeBook}`;
 }
 
 // ── 교재 빠른 선택 ──────────────────────────────────────────
@@ -1314,7 +1335,7 @@ function connectFirebaseListeners() {
   Object.values(_fbListeners).forEach(off => off && off());
   _fbListeners = {};
 
-  const paths = ['classes','students','assignments','offDays','stuMemos','classMemos','stuPlans','bookFavorites','bookLibrary','attendance','events'];
+  const paths = ['classes','students','assignments','offDays','stuMemos','classMemos','stuPlans','bookFavorites','bookLibrary','summaryMemos','attendance','events'];
 
   paths.forEach(path => {
     const ref = _fbDB.ref(`${FB_PATH}/${path}`);
@@ -1333,6 +1354,7 @@ function connectFirebaseListeners() {
       if (path === 'classMemos')     DB.classMemos     = toObj(val);
       if (path === 'stuPlans')       DB.stuPlans       = toObj(val);
       if (path === 'bookFavorites')  DB.bookFavorites  = toObj(val);
+      if (path === 'summaryMemos')   DB.summaryMemos   = toObj(val);
       if (path === 'bookLibrary') {
         const saved = toObj(val);
         if (!DB.bookLibrary) DB.bookLibrary = {};
@@ -4498,14 +4520,23 @@ function renderClassSummaryPage() {
           ? `<span class="sum-target-all">전체</span>`
           : `<span class="sum-target-stu">${row.names.join(', ')}</span>`;
 
+        const memoKey = summaryMemoKey(cls.id, row.type, row.book);
+        const memoVal = (DB.summaryMemos && DB.summaryMemos[memoKey]) || '';
+
         tbody += `<td class="sum-td">${row.book}</td>
+          <td class="sum-td memo">
+            <input type="text" class="sum-memo-input" value="${memoVal.replace(/"/g,'&quot;')}"
+              placeholder="메모 입력..."
+              onchange="saveSummaryMemo('${memoKey}', this.value)"
+              onblur="saveSummaryMemo('${memoKey}', this.value)">
+          </td>
           <td class="sum-td target">${targetHTML}</td>
         </tr>`;
       });
     });
 
     // 반 구분선
-    tbody += `<tr class="sum-sep"><td colspan="4"></td></tr>`;
+    tbody += `<tr class="sum-sep"><td colspan="5"></td></tr>`;
   });
 
   if (!tbody) {
@@ -4532,6 +4563,7 @@ function renderClassSummaryPage() {
             <th class="sum-th" style="width:80px;white-space:nowrap">반</th>
             <th class="sum-th" style="width:100px;white-space:nowrap">유형</th>
             <th class="sum-th" style="width:1%;white-space:nowrap">교재명</th>
+            <th class="sum-th" style="width:180px">메모</th>
             <th class="sum-th">대상</th>
           </tr>
         </thead>
