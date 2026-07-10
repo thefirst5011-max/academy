@@ -2717,6 +2717,39 @@ function renderAssignPage() {
                    onclick="openPausePeriodInput('${a.id}')">⏸ 시험/일시정지</button>`
               : '';
 
+            // 일시정지 일괄적용 후보: 같은 반 + 같은 유형 + 같은 교재를 가진 다른 학생
+            let pauseBulkHTML = '';
+            if (isVoca) {
+              const sameClassStudents = DB.students.filter(s => s.classId === a.classId && s.id !== a.studentId);
+              const pauseCandidates = [];
+              for (const s of sameClassStudents) {
+                const match = DB.assignments.find(x =>
+                  x.studentId === s.id && x.type === a.type && x.book === a.book
+                );
+                if (match) pauseCandidates.push({ stu: s, assign: match });
+              }
+              if (pauseCandidates.length > 0) {
+                const chkItems = pauseCandidates.map(({ stu, assign: pa }) => {
+                  const done = isAssignDone(pa);
+                  return `
+                    <label style="display:flex;align-items:center;gap:6px;padding:3px 2px;cursor:pointer;font-size:11px">
+                      <input type="checkbox" class="pause-bulk-chk-${a.id}" data-assign-id="${pa.id}" ${done ? '' : 'checked'}>
+                      <span style="font-weight:700;color:var(--text)">${stu.name}</span>
+                      ${done ? '<span style="font-size:9px;background:var(--border);color:var(--text3);padding:1px 5px;border-radius:3px">완료</span>' : ''}
+                    </label>`;
+                }).join('');
+                pauseBulkHTML = `
+                  <div style="width:100%;padding-top:4px">
+                    <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
+                      <input type="checkbox" id="pause-bulk-all-${a.id}"
+                        onchange="document.querySelectorAll('.pause-bulk-chk-${a.id}').forEach(c=>c.checked=this.checked)">
+                      <span style="font-size:11px;font-weight:700;color:var(--text2)">같은 교재 진행 학생에게도 동일 적용</span>
+                    </div>
+                    <div style="display:flex;flex-wrap:wrap;gap:8px;padding-left:20px">${chkItems}</div>
+                  </div>`;
+              }
+            }
+
             return `
               <div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;
                 padding:8px 12px;margin:4px 10px;background:#FFFFFF;
@@ -2750,6 +2783,7 @@ function renderAssignPage() {
                     onclick="savePausePeriod('${a.id}')">추가</button>
                   <button class="btn btn-ghost btn-sm" style="padding:2px 8px;font-size:10px"
                     onclick="cancelPausePeriod('${a.id}')">취소</button>
+                  ${pauseBulkHTML}
                 </span>
                 <div style="margin-left:auto;display:flex;gap:4px;flex-shrink:0">
                   ${endDateBtn}${pauseBtn}
@@ -3087,20 +3121,40 @@ function savePausePeriod(assignId) {
   if (!start || !end) { toast('시작일과 종료일을 모두 선택하세요.', 'error'); return; }
   if (end < start) { toast('종료일이 시작일보다 빠릅니다.', 'error'); return; }
 
-  const assign = DB.assignments.find(a => a.id === assignId);
-  if (!assign) { toast('과제를 찾을 수 없습니다.', 'error'); return; }
+  // 대상 과제 ID 목록: 본인 + (체크된) 일괄적용 대상
+  const targetIds = [assignId];
+  document.querySelectorAll(`.pause-bulk-chk-${assignId}:checked`).forEach(chk => {
+    const id = chk.dataset.assignId;
+    if (id && !targetIds.includes(id)) targetIds.push(id);
+  });
 
-  if (!assign.pausePeriods) assign.pausePeriods = [];
+  let appliedCount = 0;
+  let skippedOverlap = 0;
 
-  // 기존 기간과 겹치는지 확인
-  const overlap = assign.pausePeriods.some(p => start <= p.end && end >= p.start);
-  if (overlap) { toast('이미 등록된 일시정지 기간과 겹칩니다.', 'error'); return; }
+  targetIds.forEach(id => {
+    const assign = DB.assignments.find(a => a.id === id);
+    if (!assign) return;
+    if (!assign.pausePeriods) assign.pausePeriods = [];
 
-  assign.pausePeriods.push({ start, end, reason });
-  assign.pausePeriods.sort((a,b) => a.start.localeCompare(b.start));
+    const overlap = assign.pausePeriods.some(p => start <= p.end && end >= p.start);
+    if (overlap) { skippedOverlap++; return; }
+
+    assign.pausePeriods.push({ start, end, reason });
+    assign.pausePeriods.sort((a,b) => a.start.localeCompare(b.start));
+    appliedCount++;
+  });
+
+  if (appliedCount === 0) {
+    toast('선택한 모든 과제가 이미 겹치는 일시정지 기간을 갖고 있습니다.', 'error');
+    return;
+  }
 
   saveAssignmentsFb();
-  toast(`일시정지 기간(${start}~${end})이 추가되었습니다. 이후 학습일이 자동으로 밀립니다.`, 'success');
+
+  const extraMsg = targetIds.length > 1
+    ? ` (총 ${appliedCount}명 적용${skippedOverlap > 0 ? `, ${skippedOverlap}명 겹침으로 제외` : ''})`
+    : '';
+  toast(`일시정지 기간(${start}~${end})이 추가되었습니다.${extraMsg} 이후 학습일이 자동으로 밀립니다.`, 'success');
   showPage(currentPage);
 }
 
