@@ -4392,7 +4392,7 @@ function renderSettingsPage() {
 
 // ── 수업 요약 페이지 ──────────────────────────────────────────
 function renderClassSummaryPage() {
-  const today    = getToday();
+  const today    = formatDate(new Date());
   const T_ORDER  = ['SV','HV','MAIN','SUB'];
 
   function getActiveAssign(stuId, type) {
