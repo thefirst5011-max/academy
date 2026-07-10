@@ -1626,7 +1626,7 @@ function showPage(page, classId) {
   if (classId !== undefined) currentClassFilter = classId;
 
   // 네비 활성화
-  ['dashboard','student','attendance','assign','stuDetail','status','history','voca','textbook','settings'].forEach(p => {
+  ['dashboard','student','attendance','assign','stuDetail','classSummary','status','history','voca','textbook','settings'].forEach(p => {
     const el = document.getElementById('nav-'+p);
     if (el) el.classList.toggle('active', p === page);
   });
@@ -4392,19 +4392,28 @@ function renderSettingsPage() {
 
 // ── 수업 요약 페이지 ──────────────────────────────────────────
 function renderClassSummaryPage() {
-  const today    = formatDate(new Date());
-  const T_ORDER  = ['SV','HV','MAIN','SUB'];
+  try {
+  const today   = formatDate(new Date());
+  const T_ORDER = ['SV','HV','MAIN','SUB'];
+
+  if (!DB.classes || !DB.classes.length) return `
+    <div class="page-header"><div class="page-title">수업 요약</div></div>
+    <div class="empty-state"><div class="empty-icon">📋</div>
+    <div class="empty-title">반 데이터가 없습니다</div></div>`;
 
   function getActiveAssign(stuId, type) {
+    if (!DB.assignments) return null;
     const isVoca = type === 'SV' || type === 'HV';
     return DB.assignments.find(a => {
       if (a.studentId !== stuId || a.type !== type) return false;
       if (!a.startDate || a.startDate > today)       return false;
       if (isVoca) {
         if (!a.sets) return false;
-        const last = getLastStudyDate(a.startDate, a.sets,
-          type==='SV' ? (a.studyDays||null) : null);
-        return last >= today;
+        try {
+          const last = getLastStudyDate(a.startDate, a.sets,
+            type==='SV' ? (a.studyDays||null) : null);
+          return last && last >= today;
+        } catch(e) { return false; }
       }
       return !a.endDate || a.endDate >= today;
     });
@@ -4514,6 +4523,13 @@ function renderClassSummaryPage() {
         <tbody>${tbody}</tbody>
       </table>
     </div>`;
+  } catch(e) {
+    console.error('[수업요약] 오류:', e);
+    return `<div class="page-header"><div class="page-title">수업 요약</div></div>
+      <div class="empty-state"><div class="empty-icon">⚠️</div>
+      <div class="empty-title">데이터를 불러오는 중입니다</div>
+      <div class="empty-sub">잠시 후 다시 클릭해 보세요</div></div>`;
+  }
 }
 function showLibTab(type, btn) {
   ['SV','HV','MAIN','SUB'].forEach(t => {
