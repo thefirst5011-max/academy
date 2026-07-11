@@ -480,6 +480,9 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
     <div class="sb-item" onclick="showPage('classSummary')" id="nav-classSummary">
       <span class="sb-item-icon">📋</span>수업 요약
     </div>
+    <div class="sb-item" onclick="showPage('stuSummary')" id="nav-stuSummary">
+      <span class="sb-item-icon">🧑‍🎓</span>학생 요약
+    </div>
     <div class="sb-item" onclick="showPage('status')" id="nav-status">
       <span class="sb-item-icon">📊</span>반별학습현황
     </div>
@@ -947,6 +950,7 @@ function getDefaultData() {
     bookFavorites:  {},
     bookLibrary:    {},
     summaryMemos:   {},
+    stuSummaryMemos:{},
     attendance:     {},
     events:      [], // 학원 일정
   };
@@ -977,6 +981,7 @@ function sanitizeDB(parsed) {
     stuPlans:       toObj(parsed.stuPlans),
     bookFavorites:  toObj(parsed.bookFavorites),
     summaryMemos:   toObj(parsed.summaryMemos),
+    stuSummaryMemos:toObj(parsed.stuSummaryMemos),
     bookLibrary:    (() => {
       const saved = toObj(parsed.bookLibrary);
       const lib   = {};
@@ -1066,6 +1071,19 @@ function summaryMemoKey(clsId, type, book) {
   // Firebase 경로에 쓸 수 없는 문자(. # $ [ ] /) 제거
   const safeBook = book.replace(/[.#$\[\]\/]/g, '_');
   return `${clsId}__${type}__${safeBook}`;
+}
+
+// ── 학생 요약 메모 (학생 한 줄당 메모 1개, 학생+유형+교재명 조합 키) ──
+function saveStuSummaryMemo(key, val) {
+  if (!DB.stuSummaryMemos) DB.stuSummaryMemos = {};
+  const trimmed = (val || '').trim();
+  if (trimmed) DB.stuSummaryMemos[key] = trimmed;
+  else delete DB.stuSummaryMemos[key];
+  _fbUpdate({ [`${FB_PATH}/stuSummaryMemos/${key}`]: trimmed || null });
+}
+function stuSummaryMemoKey(stuId, type, book) {
+  const safeBook = book.replace(/[.#$\[\]\/]/g, '_');
+  return `${stuId}__${type}__${safeBook}`;
 }
 
 // ── 교재 빠른 선택 ──────────────────────────────────────────
@@ -1337,7 +1355,7 @@ function connectFirebaseListeners() {
   Object.values(_fbListeners).forEach(off => off && off());
   _fbListeners = {};
 
-  const paths = ['classes','students','assignments','offDays','stuMemos','classMemos','stuPlans','bookFavorites','bookLibrary','summaryMemos','attendance','events'];
+  const paths = ['classes','students','assignments','offDays','stuMemos','classMemos','stuPlans','bookFavorites','bookLibrary','summaryMemos','stuSummaryMemos','attendance','events'];
 
   paths.forEach(path => {
     const ref = _fbDB.ref(`${FB_PATH}/${path}`);
@@ -1357,6 +1375,7 @@ function connectFirebaseListeners() {
       if (path === 'stuPlans')       DB.stuPlans       = toObj(val);
       if (path === 'bookFavorites')  DB.bookFavorites  = toObj(val);
       if (path === 'summaryMemos')   DB.summaryMemos   = toObj(val);
+      if (path === 'stuSummaryMemos') DB.stuSummaryMemos = toObj(val);
       if (path === 'bookLibrary') {
         const saved = toObj(val);
         if (!DB.bookLibrary) DB.bookLibrary = {};
@@ -1671,7 +1690,7 @@ function showPage(page, classId) {
   if (classId !== undefined) currentClassFilter = classId;
 
   // 네비 활성화
-  ['dashboard','student','attendance','assign','stuDetail','classSummary','status','history','voca','textbook','settings'].forEach(p => {
+  ['dashboard','student','attendance','assign','stuDetail','classSummary','stuSummary','status','history','voca','textbook','settings'].forEach(p => {
     const el = document.getElementById('nav-'+p);
     if (el) el.classList.toggle('active', p === page);
   });
@@ -1689,6 +1708,7 @@ function showPage(page, classId) {
     assign:      renderAssignPage,
     stuDetail:    renderStudentDetailPage,
     classSummary: renderClassSummaryPage,
+    stuSummary:   renderStudentSummaryPage,
     status:       renderStatusPage,
     history:     renderHistoryPage,
     voca:        renderVocaPage,
@@ -4737,6 +4757,162 @@ function renderClassSummaryPage() {
       <div class="empty-sub">잠시 후 다시 클릭해 보세요</div></div>`;
   }
 }
+// ── 학생 요약 페이지 ────────────────────────────────────────
+function renderStudentSummaryPage() {
+  try {
+  const today   = formatDate(new Date());
+  const T_ORDER = ['SV','HV','MAIN','SUB'];
+
+  if (!DB.students || !DB.students.length) return `
+    <div class="page-header"><div class="page-title">학생 요약</div></div>
+    <div class="empty-state"><div class="empty-icon">🧑‍🎓</div>
+    <div class="empty-title">학생 데이터가 없습니다</div></div>`;
+
+  function getActiveAssign(stuId, type) {
+    if (!DB.assignments) return null;
+    const isVoca = type === 'SV' || type === 'HV';
+    return DB.assignments.find(a => {
+      if (a.studentId !== stuId || a.type !== type) return false;
+      if (!a.startDate || a.startDate > today)       return false;
+      if (isVoca) {
+        if (!a.sets) return false;
+        try {
+          const last = getLastStudyDate(a.startDate, a.sets,
+            type==='SV' ? (a.studyDays||null) : null, a.pausePeriods||null);
+          return last && last >= today;
+        } catch(e) { return false; }
+      }
+      return !a.endDate || a.endDate >= today;
+    });
+  }
+
+  let rowsHTML = '';
+
+  DB.classes.forEach(cls => {
+    const students = DB.students.filter(s => s.classId === cls.id)
+      .slice().sort((a,b) => a.name.localeCompare(b.name, 'ko'));
+
+    students.forEach((stu, si) => {
+      const isLastStudentOfClass = si === students.length - 1;
+
+      // 이 학생의 진행중인 과제 목록 (유형 순서대로)
+      const stuRows = T_ORDER.map(type => {
+        const a = getActiveAssign(stu.id, type);
+        if (!a) return null;
+
+        const isVoca = type === 'SV' || type === 'HV';
+        let statusHTML = `<span style="font-size:11px;color:var(--text3)">진행중</span>`;
+        let warnHTML = '';
+
+        if (isVoca && a.sets) {
+          try {
+            const allD = getStudyDates(a.startDate, a.sets,
+              type==='SV' ? (a.studyDays||null) : null, a.pausePeriods||null);
+            const done = allD.filter(d => d <= today).length;
+            const pct  = Math.round(done / a.sets * 100);
+            const barColor = pct >= 70 ? '#2A6E4E' : pct >= 30 ? '#A86820' : '#B82222';
+            statusHTML = `
+              <div style="display:flex;align-items:center;gap:6px">
+                <div style="width:60px;height:5px;background:var(--border);border-radius:3px;overflow:hidden">
+                  <div style="height:100%;width:${pct}%;background:${barColor};border-radius:3px"></div>
+                </div>
+                <span style="font-size:11px;color:var(--text3);white-space:nowrap">${done}/${a.sets}</span>
+              </div>`;
+            if (pct < 30) {
+              warnHTML = `<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;
+                background:#FCE8E6;color:#B82222;margin-left:6px;white-space:nowrap">지연</span>`;
+            }
+          } catch(e) {}
+        }
+
+        const memoKey = stuSummaryMemoKey(stu.id, type, a.book);
+        const memoVal = (DB.stuSummaryMemos && DB.stuSummaryMemos[memoKey]) || '';
+
+        return { type, book: a.book, statusHTML, warnHTML, memoKey, memoVal };
+      }).filter(Boolean);
+
+      if (!stuRows.length) return; // 진행중인 과제가 없는 학생은 표에서 제외
+
+      const stuRowSpan = stuRows.length;
+      let stuFirstRow = true;
+
+      stuRows.forEach((row, ri) => {
+        const isLastRowOfStu = ri === stuRows.length - 1;
+        const isLastRowOfClass = isLastStudentOfClass && isLastRowOfStu;
+        const lastCls  = isLastRowOfClass ? ' sum-cls-border' : '';
+        const lastType = (isLastRowOfStu && !isLastRowOfClass) ? ' sum-type-border' : '';
+
+        rowsHTML += '<tr>';
+
+        if (stuFirstRow) {
+          rowsHTML += `
+            <td class="sum-td sum-cls-td" rowspan="${stuRowSpan}" style="border-bottom:2px solid var(--border2)">
+              ${stu.name}
+            </td>
+            <td class="sum-td sum-type-td" rowspan="${stuRowSpan}" style="border-bottom:2px solid var(--border2)">
+              <span style="font-size:11px;color:var(--text3)">${cls.name}</span>
+            </td>`;
+          stuFirstRow = false;
+        }
+
+        rowsHTML += `
+            <td class="sum-td${lastCls}${lastType}" style="border-right:1px solid var(--border)">
+              <span class="type-chip ${TYPE_CHIPS[row.type]}">${TYPE_LABELS[row.type]}</span>
+            </td>
+            <td class="sum-td sum-book-td${lastCls}${lastType}">${row.book}</td>
+            <td class="sum-td${lastCls}${lastType}">${row.statusHTML}${row.warnHTML}</td>
+            <td class="sum-td sum-memo-td${lastCls}${lastType}">
+              <input type="text" class="sum-memo-input" value="${row.memoVal.replace(/"/g,'&quot;')}"
+                placeholder="메모 입력..."
+                onchange="saveStuSummaryMemo('${row.memoKey}', this.value)"
+                onblur="saveStuSummaryMemo('${row.memoKey}', this.value)">
+            </td>
+          </tr>`;
+      });
+    });
+  });
+
+  if (!rowsHTML) {
+    return `
+      <div class="page-header">
+        <div class="page-title">학생 요약</div>
+        <div class="page-sub">학생별 진행중인 과제 현황</div>
+      </div>
+      <div class="empty-state">
+        <div class="empty-icon">🧑‍🎓</div>
+        <div class="empty-title">진행중인 과제가 없습니다</div>
+      </div>`;
+  }
+
+  return `
+    <div class="page-header">
+      <div class="page-title">학생 요약</div>
+      <div class="page-sub">학생별 진행중인 과제 현황 (수업보카→홈보카→주교재→부교재)</div>
+    </div>
+    <div class="card" style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+      <table class="sum-table" style="min-width:760px">
+        <thead>
+          <tr>
+            <th class="sum-th" style="width:80px">학생</th>
+            <th class="sum-th" style="width:60px">반</th>
+            <th class="sum-th" style="width:100px">유형</th>
+            <th class="sum-th">교재명</th>
+            <th class="sum-th" style="width:140px">진행률</th>
+            <th class="sum-th" style="width:170px">메모</th>
+          </tr>
+        </thead>
+        <tbody>${rowsHTML}</tbody>
+      </table>
+    </div>`;
+  } catch(e) {
+    console.error('[학생요약] 오류:', e);
+    return `<div class="page-header"><div class="page-title">학생 요약</div></div>
+      <div class="empty-state"><div class="empty-icon">⚠️</div>
+      <div class="empty-title">데이터를 불러오는 중입니다</div>
+      <div class="empty-sub">잠시 후 다시 클릭해 보세요</div></div>`;
+  }
+}
+
 function showLibTab(type, btn) {
   ['SV','HV','MAIN','SUB'].forEach(t => {
     const body = document.getElementById('lib-body-' + t);
