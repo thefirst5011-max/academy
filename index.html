@@ -334,14 +334,14 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .sum-type-rows{padding:0 16px 8px}
 .sum-row{padding:8px 0;border-top:1px dashed var(--border)}
 .sum-row:first-child{border-top:none}
-.sum-row-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:5px}
+.sum-row-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .sum-book{font-size:13px;font-weight:700;color:var(--text);white-space:nowrap}
 .sum-row-target{font-size:12px}
 .sum-target-all{font-size:11px;font-weight:700;padding:2px 9px;border-radius:4px;
   background:var(--surface2);color:var(--text2);border:1px solid var(--border2);
   display:inline-block}
 .sum-target-stu{font-size:12px;color:var(--text2);line-height:1.6}
-.sum-memo-input{width:220px;max-width:100%;flex-shrink:0;border:1px solid var(--border);border-radius:6px;
+.sum-memo-input{width:160px;max-width:100%;flex-shrink:0;border:1px solid var(--border);border-radius:6px;
   padding:5px 8px;font-size:12px;font-family:inherit;background:var(--surface2);color:var(--text2)}
 .sum-memo-input:focus{outline:none;border-color:var(--blue-mid);background:var(--surface)}
 .sum-memo-input::placeholder{color:var(--text3)}
@@ -4662,8 +4662,8 @@ function renderClassSummaryPage() {
                 placeholder="메모 입력..."
                 onchange="saveSummaryMemo('${memoKey}', this.value)"
                 onblur="saveSummaryMemo('${memoKey}', this.value)">
+              <span class="sum-row-target">${targetHTML}</span>
             </div>
-            <div class="sum-row-target">${targetHTML}</div>
           </div>`;
       }).join('');
 
