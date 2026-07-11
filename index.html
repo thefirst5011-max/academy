@@ -328,7 +328,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .sum-td{padding:9px 14px;font-size:12px;border-bottom:1px solid var(--border);vertical-align:middle}
 .sum-cls-td{font-size:13px;font-weight:700;color:var(--text);vertical-align:top;
   border-right:2px solid var(--border2);white-space:nowrap}
-.sum-cls-border{border-bottom:2px solid var(--border2)}
+.sum-cls-border{border-bottom:2px solid var(--border2) !important}
 .sum-type-td{vertical-align:top;border-right:1px solid var(--border);white-space:nowrap}
 .sum-book-td{white-space:nowrap;font-weight:500}
 .sum-memo-td{white-space:normal}
@@ -4634,7 +4634,9 @@ function renderClassSummaryPage() {
     if (!typeBlocks.length) return;
 
     const clsRowSpan = typeBlocks.length;
+    const clsTotalRows = typeBlocks.reduce((n, r) => n + 1, 0); // typeBlocks는 이미 행 단위 배열
     let clsFirstRow = true;
+    let rowCounter  = 0;
 
     T_ORDER.forEach(type => {
       const rows = typeBlocks.filter(r => r.type === type);
@@ -4643,17 +4645,20 @@ function renderClassSummaryPage() {
       let typeFirstRow = true;
 
       rows.forEach(row => {
+        rowCounter++;
+        const isLastRowOfClass = rowCounter === clsTotalRows;
         const targetHTML = row.isAll
           ? `<span class="sum-target-all">전체</span>`
           : `<span class="sum-target-stu">${row.names.join(', ')}</span>`;
         const memoKey = summaryMemoKey(cls.id, row.type, row.book);
         const memoVal = (DB.summaryMemos && DB.summaryMemos[memoKey]) || '';
+        const lastCls = isLastRowOfClass ? ' sum-cls-border' : '';
 
         summaryRowsHTML += '<tr>';
 
         if (clsFirstRow) {
           summaryRowsHTML += `
-            <td class="sum-td sum-cls-td sum-cls-border" rowspan="${clsRowSpan}">
+            <td class="sum-td sum-cls-td" rowspan="${clsRowSpan}" style="border-bottom:2px solid var(--border2)">
               <span style="display:flex;align-items:center;gap:6px">
                 <span style="width:8px;height:8px;border-radius:50%;flex-shrink:0;
                   background:${cls.color||'var(--blue)'}"></span>${cls.name}
@@ -4663,16 +4668,16 @@ function renderClassSummaryPage() {
         }
         if (typeFirstRow) {
           summaryRowsHTML += `
-            <td class="sum-td sum-type-td" rowspan="${typeRowSpan}">
+            <td class="sum-td sum-type-td${lastCls}" rowspan="${typeRowSpan}">
               <span class="type-chip ${TYPE_CHIPS[type]}">${TYPE_LABELS[type]}</span>
             </td>`;
           typeFirstRow = false;
         }
 
         summaryRowsHTML += `
-            <td class="sum-td sum-book-td">${row.book}</td>
-            <td class="sum-td sum-target-td">${targetHTML}</td>
-            <td class="sum-td sum-memo-td">
+            <td class="sum-td sum-book-td${lastCls}">${row.book}</td>
+            <td class="sum-td sum-target-td${lastCls}">${targetHTML}</td>
+            <td class="sum-td sum-memo-td${lastCls}">
               <input type="text" class="sum-memo-input" value="${memoVal.replace(/"/g,'&quot;')}"
                 placeholder="메모 입력..."
                 onchange="saveSummaryMemo('${memoKey}', this.value)"
