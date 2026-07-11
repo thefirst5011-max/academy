@@ -328,6 +328,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .sum-td{padding:9px 14px;font-size:12px;border-bottom:1px solid var(--border);vertical-align:middle}
 .sum-cls-td{font-size:13px;font-weight:700;color:var(--text);vertical-align:top;
   border-right:2px solid var(--border2);white-space:nowrap}
+.sum-cls-border{border-bottom:2px solid var(--border2)}
 .sum-type-td{vertical-align:top;border-right:1px solid var(--border);white-space:nowrap}
 .sum-book-td{white-space:nowrap;font-weight:500}
 .sum-memo-td{white-space:normal}
@@ -4652,7 +4653,7 @@ function renderClassSummaryPage() {
 
         if (clsFirstRow) {
           summaryRowsHTML += `
-            <td class="sum-td sum-cls-td" rowspan="${clsRowSpan}">
+            <td class="sum-td sum-cls-td sum-cls-border" rowspan="${clsRowSpan}">
               <span style="display:flex;align-items:center;gap:6px">
                 <span style="width:8px;height:8px;border-radius:50%;flex-shrink:0;
                   background:${cls.color||'var(--blue)'}"></span>${cls.name}
@@ -4670,13 +4671,13 @@ function renderClassSummaryPage() {
 
         summaryRowsHTML += `
             <td class="sum-td sum-book-td">${row.book}</td>
+            <td class="sum-td sum-target-td">${targetHTML}</td>
             <td class="sum-td sum-memo-td">
               <input type="text" class="sum-memo-input" value="${memoVal.replace(/"/g,'&quot;')}"
                 placeholder="메모 입력..."
                 onchange="saveSummaryMemo('${memoKey}', this.value)"
                 onblur="saveSummaryMemo('${memoKey}', this.value)">
             </td>
-            <td class="sum-td sum-target-td">${targetHTML}</td>
           </tr>`;
       });
     });
@@ -4706,8 +4707,8 @@ function renderClassSummaryPage() {
             <th class="sum-th" style="width:70px">반</th>
             <th class="sum-th" style="width:100px">유형</th>
             <th class="sum-th">교재명</th>
-            <th class="sum-th" style="width:170px">메모</th>
             <th class="sum-th">대상</th>
+            <th class="sum-th" style="width:170px">메모</th>
           </tr>
         </thead>
         <tbody>${summaryRowsHTML}</tbody>
