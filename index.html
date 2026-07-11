@@ -321,35 +321,25 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .alert-warning{background:var(--amber-bg);color:var(--amber);border:1px solid #FAC775}
 .alert-success{background:var(--green-bg);color:var(--green);border:1px solid #A0C8A8}
 
-/* ── 수업 요약 카드형 리스트 (모바일 친화, rowspan 없음) ── */
-.sum-class-card{background:var(--surface);border:1px solid var(--border);
-  border-radius:10px;overflow:hidden;margin-bottom:14px}
-.sum-class-head{display:flex;align-items:center;gap:8px;padding:11px 16px;
-  background:var(--surface2);border-bottom:1px solid var(--border)}
-.sum-class-name{font-size:14px;font-weight:800;color:var(--text)}
-.sum-class-body{padding:6px 0}
-.sum-type-block{border-bottom:1px solid var(--border)}
-.sum-type-block:last-child{border-bottom:none}
-.sum-type-head{padding:9px 16px 5px}
-.sum-type-rows{padding:0 16px 8px}
-.sum-row{padding:8px 0;border-top:1px dashed var(--border)}
-.sum-row:first-child{border-top:none}
-.sum-row-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.sum-book{font-size:13px;font-weight:700;color:var(--text);white-space:nowrap}
-.sum-row-target{font-size:12px}
+/* ── 수업 요약 표 (반/유형 rowspan, 각 행 높이 독립적) ── */
+.sum-table{width:100%;border-collapse:collapse}
+.sum-th{padding:10px 14px;font-size:11px;font-weight:700;color:var(--text2);
+  background:var(--surface2);border-bottom:2px solid var(--border2);text-align:left;white-space:nowrap}
+.sum-td{padding:9px 14px;font-size:12px;border-bottom:1px solid var(--border);vertical-align:middle}
+.sum-cls-td{font-size:13px;font-weight:700;color:var(--text);vertical-align:top;
+  border-right:2px solid var(--border2);white-space:nowrap}
+.sum-type-td{vertical-align:top;border-right:1px solid var(--border);white-space:nowrap}
+.sum-book-td{white-space:nowrap;font-weight:500}
+.sum-memo-td{white-space:normal}
+.sum-target-td{white-space:normal}
 .sum-target-all{font-size:11px;font-weight:700;padding:2px 9px;border-radius:4px;
   background:var(--surface2);color:var(--text2);border:1px solid var(--border2);
   display:inline-block}
 .sum-target-stu{font-size:12px;color:var(--text2);line-height:1.6}
-.sum-memo-input{width:160px;max-width:100%;flex-shrink:0;border:1px solid var(--border);border-radius:6px;
+.sum-memo-input{width:150px;max-width:100%;border:1px solid var(--border);border-radius:6px;
   padding:5px 8px;font-size:12px;font-family:inherit;background:var(--surface2);color:var(--text2)}
 .sum-memo-input:focus{outline:none;border-color:var(--blue-mid);background:var(--surface)}
 .sum-memo-input::placeholder{color:var(--text3)}
-
-@media (max-width:600px){
-  .sum-row-top{flex-direction:column;align-items:flex-start}
-  .sum-memo-input{width:100%}
-}
 .empty-state{text-align:center;padding:48px 20px;color:var(--text3)}
 .empty-icon{font-size:36px;margin-bottom:12px}
 .empty-title{font-size:15px;font-weight:700;color:var(--text2);margin-bottom:6px}
@@ -4612,7 +4602,7 @@ function renderClassSummaryPage() {
     });
   }
 
-  let classCardsHTML = '';
+  let summaryRowsHTML = '';
 
   DB.classes.forEach(cls => {
     const students = DB.students.filter(s => s.classId === cls.id);
@@ -4642,52 +4632,57 @@ function renderClassSummaryPage() {
 
     if (!typeBlocks.length) return;
 
-    // 유형별 섹션 HTML (카드형 — rowspan 없이 세로로 쌓임)
-    const typeSectionsHTML = T_ORDER.map(type => {
-      const rows = typeBlocks.filter(r => r.type === type);
-      if (!rows.length) return '';
+    const clsRowSpan = typeBlocks.length;
+    let clsFirstRow = true;
 
-      const rowsHTML = rows.map(row => {
+    T_ORDER.forEach(type => {
+      const rows = typeBlocks.filter(r => r.type === type);
+      if (!rows.length) return;
+      const typeRowSpan = rows.length;
+      let typeFirstRow = true;
+
+      rows.forEach(row => {
         const targetHTML = row.isAll
           ? `<span class="sum-target-all">전체</span>`
           : `<span class="sum-target-stu">${row.names.join(', ')}</span>`;
         const memoKey = summaryMemoKey(cls.id, row.type, row.book);
         const memoVal = (DB.summaryMemos && DB.summaryMemos[memoKey]) || '';
 
-        return `
-          <div class="sum-row">
-            <div class="sum-row-top">
-              <span class="sum-book">${row.book}</span>
+        summaryRowsHTML += '<tr>';
+
+        if (clsFirstRow) {
+          summaryRowsHTML += `
+            <td class="sum-td sum-cls-td" rowspan="${clsRowSpan}">
+              <span style="display:flex;align-items:center;gap:6px">
+                <span style="width:8px;height:8px;border-radius:50%;flex-shrink:0;
+                  background:${cls.color||'var(--blue)'}"></span>${cls.name}
+              </span>
+            </td>`;
+          clsFirstRow = false;
+        }
+        if (typeFirstRow) {
+          summaryRowsHTML += `
+            <td class="sum-td sum-type-td" rowspan="${typeRowSpan}">
+              <span class="type-chip ${TYPE_CHIPS[type]}">${TYPE_LABELS[type]}</span>
+            </td>`;
+          typeFirstRow = false;
+        }
+
+        summaryRowsHTML += `
+            <td class="sum-td sum-book-td">${row.book}</td>
+            <td class="sum-td sum-memo-td">
               <input type="text" class="sum-memo-input" value="${memoVal.replace(/"/g,'&quot;')}"
                 placeholder="메모 입력..."
                 onchange="saveSummaryMemo('${memoKey}', this.value)"
                 onblur="saveSummaryMemo('${memoKey}', this.value)">
-              <span class="sum-row-target">${targetHTML}</span>
-            </div>
-          </div>`;
-      }).join('');
-
-      return `
-        <div class="sum-type-block">
-          <div class="sum-type-head">
-            <span class="type-chip ${TYPE_CHIPS[type]}">${TYPE_LABELS[type]}</span>
-          </div>
-          <div class="sum-type-rows">${rowsHTML}</div>
-        </div>`;
-    }).join('');
-
-    classCardsHTML += `
-      <div class="sum-class-card">
-        <div class="sum-class-head">
-          <span style="width:9px;height:9px;border-radius:50%;
-            background:${cls.color||'var(--blue)'};flex-shrink:0"></span>
-          <span class="sum-class-name">${cls.name}</span>
-        </div>
-        <div class="sum-class-body">${typeSectionsHTML}</div>
-      </div>`;
+            </td>
+            <td class="sum-td sum-target-td">${targetHTML}</td>
+          </tr>`;
+      });
+    });
   });
 
-  if (!classCardsHTML) {
+  if (!summaryRowsHTML) {
     return `
       <div class="page-header">
         <div class="page-title">수업 요약</div>
@@ -4704,7 +4699,20 @@ function renderClassSummaryPage() {
       <div class="page-title">수업 요약</div>
       <div class="page-sub">진행중인 과제 · 반별 교재 현황 (수업보카→홈보카→주교재→부교재)</div>
     </div>
-    ${classCardsHTML}`;
+    <div class="card" style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+      <table class="sum-table" style="min-width:760px">
+        <thead>
+          <tr>
+            <th class="sum-th" style="width:70px">반</th>
+            <th class="sum-th" style="width:100px">유형</th>
+            <th class="sum-th">교재명</th>
+            <th class="sum-th" style="width:170px">메모</th>
+            <th class="sum-th">대상</th>
+          </tr>
+        </thead>
+        <tbody>${summaryRowsHTML}</tbody>
+      </table>
+    </div>`;
   } catch(e) {
     console.error('[수업요약] 오류:', e);
     return `<div class="page-header"><div class="page-title">수업 요약</div></div>
