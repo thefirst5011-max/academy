@@ -329,6 +329,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .sum-cls-td{font-size:13px;font-weight:700;color:var(--text);vertical-align:top;
   border-right:2px solid var(--border2);white-space:nowrap}
 .sum-cls-border{border-bottom:2px solid var(--border2) !important}
+.sum-type-border{border-bottom:1.5px solid var(--border2) !important}
 .sum-type-td{vertical-align:top;border-right:1px solid var(--border);white-space:nowrap}
 .sum-book-td{white-space:nowrap;font-weight:500}
 .sum-memo-td{white-space:normal}
@@ -4633,26 +4634,33 @@ function renderClassSummaryPage() {
 
     if (!typeBlocks.length) return;
 
-    const clsRowSpan = typeBlocks.length;
-    const clsTotalRows = typeBlocks.reduce((n, r) => n + 1, 0); // typeBlocks는 이미 행 단위 배열
+    const clsRowSpan   = typeBlocks.length;
+    const clsTotalRows = typeBlocks.length;
     let clsFirstRow = true;
     let rowCounter  = 0;
 
-    T_ORDER.forEach(type => {
-      const rows = typeBlocks.filter(r => r.type === type);
-      if (!rows.length) return;
-      const typeRowSpan = rows.length;
+    // 유형별 그룹 목록(순서대로) — 각 그룹의 마지막 rowCounter를 미리 알기 위해
+    const typeGroups = T_ORDER
+      .map(type => ({ type, rows: typeBlocks.filter(r => r.type === type) }))
+      .filter(g => g.rows.length > 0);
+
+    typeGroups.forEach((group, gi) => {
+      const { type, rows } = group;
+      const typeRowSpan   = rows.length;
+      const isLastGroup   = gi === typeGroups.length - 1; // 이 유형이 반의 마지막 유형인지
       let typeFirstRow = true;
 
-      rows.forEach(row => {
+      rows.forEach((row, ri) => {
         rowCounter++;
-        const isLastRowOfClass = rowCounter === clsTotalRows;
+        const isLastRowOfClass = isLastGroup && (ri === rows.length - 1);
+        const isLastRowOfType  = ri === rows.length - 1;
         const targetHTML = row.isAll
           ? `<span class="sum-target-all">전체</span>`
           : `<span class="sum-target-stu">${row.names.join(', ')}</span>`;
         const memoKey = summaryMemoKey(cls.id, row.type, row.book);
         const memoVal = (DB.summaryMemos && DB.summaryMemos[memoKey]) || '';
-        const lastCls = isLastRowOfClass ? ' sum-cls-border' : '';
+        const lastCls  = isLastRowOfClass ? ' sum-cls-border' : '';
+        const lastType = (isLastRowOfType && !isLastRowOfClass) ? ' sum-type-border' : '';
 
         summaryRowsHTML += '<tr>';
 
@@ -4667,17 +4675,19 @@ function renderClassSummaryPage() {
           clsFirstRow = false;
         }
         if (typeFirstRow) {
+          // 이 유형 블록의 마지막 여부(=isLastGroup)에 따라 rowspan 셀 하단 테두리 결정
+          const typeCellBorderClass = isLastGroup ? ' sum-cls-border' : ' sum-type-border';
           summaryRowsHTML += `
-            <td class="sum-td sum-type-td${lastCls}" rowspan="${typeRowSpan}">
+            <td class="sum-td sum-type-td${typeCellBorderClass}" rowspan="${typeRowSpan}">
               <span class="type-chip ${TYPE_CHIPS[type]}">${TYPE_LABELS[type]}</span>
             </td>`;
           typeFirstRow = false;
         }
 
         summaryRowsHTML += `
-            <td class="sum-td sum-book-td${lastCls}">${row.book}</td>
-            <td class="sum-td sum-target-td${lastCls}">${targetHTML}</td>
-            <td class="sum-td sum-memo-td${lastCls}">
+            <td class="sum-td sum-book-td${lastCls}${lastType}">${row.book}</td>
+            <td class="sum-td sum-target-td${lastCls}${lastType}">${targetHTML}</td>
+            <td class="sum-td sum-memo-td${lastCls}${lastType}">
               <input type="text" class="sum-memo-input" value="${memoVal.replace(/"/g,'&quot;')}"
                 placeholder="메모 입력..."
                 onchange="saveSummaryMemo('${memoKey}', this.value)"
