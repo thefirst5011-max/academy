@@ -82,19 +82,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   background:rgba(0,0,0,.4);z-index:90;
 }
 
-/* ── 모바일 반응형 (768px 이하) ── */
-@media (max-width:768px){
-  .hdr-hamburger{display:block}
-  .hdr-title{font-size:13px}
-  .sidebar{
-    transform:translateX(-100%);
-    transition:transform .22s ease;
-    width:min(var(--sw),80vw);
-  }
-  .sidebar.open{transform:translateX(0);box-shadow:4px 0 20px rgba(0,0,0,.25)}
-  .sidebar-overlay.open{display:block}
-  .main{margin-left:0;padding-left:12px;padding-right:12px}
-}
+/* ── 모바일 반응형은 </style> 직전에 별도 배치 (CSS 순서상 최우선 적용) ── */
 
 /* ── 사이드바 ── */
 .sidebar{
@@ -470,6 +458,20 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .stu-check-name{font-size:13px;font-weight:600;color:var(--text);flex:1}
 .stu-check-badge{font-size:10px;color:var(--text3)}
 .stu-selected-count{font-size:11px;font-weight:700;margin-top:5px;color:var(--blue)}
+
+/* ── 모바일 반응형 (768px 이하) — 최우선 적용 위해 맨 마지막 배치 ── */
+@media (max-width:768px){
+  .hdr-hamburger{display:block}
+  .hdr-title{font-size:13px}
+  .sidebar{
+    transform:translateX(-100%);
+    transition:transform .22s ease;
+    width:min(260px,80vw);
+  }
+  .sidebar.open{transform:translateX(0);box-shadow:4px 0 20px rgba(0,0,0,.25)}
+  .sidebar-overlay.open{display:block}
+  .main{margin-left:0;padding-left:12px;padding-right:12px}
+}
 </style>
 </head>
 <body class="class-colors">
@@ -479,7 +481,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   <button class="hdr-hamburger" onclick="toggleSidebar()" aria-label="메뉴 열기">☰</button>
   <span class="hdr-logo">🏫</span>
   <span class="hdr-title">학원 학습 관리 시스템</span>
-  <span class="hdr-badge">v2.1</span>
+  <span class="hdr-badge">v2.2</span>
   <div class="hdr-right">
     <span style="font-size:10px;color:var(--sb-text2)">자동저장</span>
     <span class="hdr-save-status saved" id="save-status">● 저장됨</span>
