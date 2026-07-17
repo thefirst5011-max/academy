@@ -481,7 +481,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   <button class="hdr-hamburger" onclick="toggleSidebar()" aria-label="메뉴 열기">☰</button>
   <span class="hdr-logo">🏫</span>
   <span class="hdr-title">학원 학습 관리 시스템</span>
-  <span class="hdr-badge">v3.1</span>
+  <span class="hdr-badge">v3.2</span>
   <div class="hdr-right">
     <span style="font-size:10px;color:var(--sb-text2)">자동저장</span>
     <span class="hdr-save-status saved" id="save-status">● 저장됨</span>
@@ -4902,10 +4902,10 @@ function renderStudentSummaryBody() {
     <div class="empty-state"><div class="empty-icon">🧑‍🎓</div>
     <div class="empty-title">학생 데이터가 없습니다</div></div>`;
 
-  function getActiveAssign(stuId, type) {
-    if (!DB.assignments) return null;
+  function getActiveAssigns(stuId, type) {
+    if (!DB.assignments) return [];
     const isVoca = type === 'SV' || type === 'HV';
-    return DB.assignments.find(a => {
+    return DB.assignments.filter(a => {
       if (a.studentId !== stuId || a.type !== type) return false;
       if (!a.startDate || a.startDate > today)       return false;
       if (isVoca) {
@@ -4929,11 +4929,10 @@ function renderStudentSummaryBody() {
     students.forEach((stu, si) => {
       const isLastStudentOfClass = si === students.length - 1;
 
-      // 이 학생의 진행중인 과제 목록 (유형 순서대로)
-      const stuRows = T_ORDER.map(type => {
-        const a = getActiveAssign(stu.id, type);
-        if (!a) return null;
-
+      // 이 학생의 진행중인 과제 목록 (유형 순서대로, 유형당 여러 개 가능)
+      const stuRows = T_ORDER.flatMap(type => {
+        const assigns = getActiveAssigns(stu.id, type);
+        return assigns.map(a => {
         const isVoca = type === 'SV' || type === 'HV';
         let statusHTML = `<span style="font-size:11px;color:var(--text3)">진행중</span>`;
         let warnHTML = '';
@@ -4963,6 +4962,7 @@ function renderStudentSummaryBody() {
         const memoVal = (DB.stuSummaryMemos && DB.stuSummaryMemos[memoKey]) || '';
 
         return { type, book: a.book, statusHTML, warnHTML, memoKey, memoVal };
+        });
       }).filter(Boolean);
 
       if (!stuRows.length) return; // 진행중인 과제가 없는 학생은 표에서 제외
