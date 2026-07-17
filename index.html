@@ -333,7 +333,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .alert-success{background:var(--green-bg);color:var(--green);border:1px solid #A0C8A8}
 
 /* ── 수업 요약 표 (반/유형 rowspan, 각 행 높이 독립적) ── */
-.sum-table{width:100%;border-collapse:collapse}
+.sum-table{width:100%;border-collapse:collapse;table-layout:fixed}
 .sum-th{padding:10px 14px;font-size:11px;font-weight:700;color:var(--text2);
   background:var(--surface2);border-bottom:2px solid var(--border2);text-align:left;white-space:nowrap}
 .sum-td{padding:9px 14px;font-size:12px;border-bottom:1px solid var(--border);vertical-align:middle}
@@ -348,7 +348,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .sum-target-all{font-size:11px;font-weight:700;padding:2px 9px;border-radius:4px;
   background:var(--surface2);color:var(--text2);border:1px solid var(--border2);
   display:inline-block}
-.sum-target-stu{font-size:12px;color:var(--text2);line-height:1.6;white-space:nowrap}
+.sum-target-stu{font-size:12px;color:var(--text2);line-height:1.6;white-space:normal;word-break:keep-all}
 @keyframes sumPeriodBlink{0%,100%{opacity:1}50%{opacity:.35}}
 .sum-period-urgent{animation:sumPeriodBlink 1s ease-in-out infinite;font-weight:700;color:#B83224 !important}
 .chip-sm{font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;
@@ -481,7 +481,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   <button class="hdr-hamburger" onclick="toggleSidebar()" aria-label="메뉴 열기">☰</button>
   <span class="hdr-logo">🏫</span>
   <span class="hdr-title">학원 학습 관리 시스템</span>
-  <span class="hdr-badge">v2.4</span>
+  <span class="hdr-badge">v2.5</span>
   <div class="hdr-right">
     <span style="font-size:10px;color:var(--sb-text2)">자동저장</span>
     <span class="hdr-save-status saved" id="save-status">● 저장됨</span>
@@ -4837,7 +4837,7 @@ function renderClassSummaryPage() {
       <div class="page-sub">진행중인 과제 · 반별 교재 현황 (수업보카→홈보카→주교재→부교재)</div>
     </div>
     <div class="card" style="overflow-x:auto;-webkit-overflow-scrolling:touch">
-      <table class="sum-table" style="min-width:760px">
+      <table class="sum-table">
         <thead>
           <tr>
             <th class="sum-th" style="width:56px">반</th>
@@ -5018,7 +5018,7 @@ function renderStudentSummaryBody() {
       <div class="page-sub">학생별 진행중인 과제 현황 (수업보카→홈보카→주교재→부교재)</div>
     </div>
     <div class="card" style="overflow-x:auto;-webkit-overflow-scrolling:touch">
-      <table class="sum-table" style="min-width:760px">
+      <table class="sum-table">
         <thead>
           <tr>
             <th class="sum-th" style="width:80px">학생</th>
@@ -5499,7 +5499,7 @@ function renderAssignSummaryBody() {
         <div class="page-sub">유형별(수업보카→홈보카→주교재→부교재) 교재 리스트</div>
       </div>
       <div class="card" style="overflow-x:auto;-webkit-overflow-scrolling:touch">
-        <table class="sum-table" style="min-width:800px">
+        <table class="sum-table">
           <thead>
             <tr>
               <th class="sum-th" style="width:100px">유형</th>
