@@ -471,6 +471,9 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   .sidebar.open{transform:translateX(0);box-shadow:4px 0 20px rgba(0,0,0,.25)}
   .sidebar-overlay.open{display:block}
   .main{margin-left:0;padding-left:12px;padding-right:12px}
+  /* 좁은 화면에서는 table-layout:fixed로 컬럼이 짓눌려 텍스트가 겹치므로
+     auto 레이아웃 + 가로 스크롤로 전환 */
+  .sum-table{table-layout:auto;min-width:700px}
 }
 </style>
 </head>
@@ -481,7 +484,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   <button class="hdr-hamburger" onclick="toggleSidebar()" aria-label="메뉴 열기">☰</button>
   <span class="hdr-logo">🏫</span>
   <span class="hdr-title">학원 학습 관리 시스템</span>
-  <span class="hdr-badge">v3.2</span>
+  <span class="hdr-badge">v3.3</span>
   <div class="hdr-right">
     <span style="font-size:10px;color:var(--sb-text2)">자동저장</span>
     <span class="hdr-save-status saved" id="save-status">● 저장됨</span>
