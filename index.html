@@ -338,6 +338,9 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   background:var(--surface2);color:var(--text2);border:1px solid var(--border2);
   display:inline-block}
 .sum-target-stu{font-size:12px;color:var(--text2);line-height:1.6}
+.chip-sm{font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;
+  background:var(--surface2);border:1px solid var(--border);color:var(--text2);
+  display:inline-block;margin:1px 3px 1px 0;white-space:nowrap}
 .sum-memo-input{width:150px;max-width:100%;border:1px solid var(--border);border-radius:6px;
   padding:5px 8px;font-size:12px;font-family:inherit;background:var(--surface2);color:var(--text2)}
 .sum-memo-input:focus{outline:none;border-color:var(--blue-mid);background:var(--surface)}
@@ -450,7 +453,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 <header class="app-header">
   <span class="hdr-logo">🏫</span>
   <span class="hdr-title">학원 학습 관리 시스템</span>
-  <span class="hdr-badge">v1.5</span>
+  <span class="hdr-badge">v1.6</span>
   <div class="hdr-right">
     <span style="font-size:10px;color:var(--sb-text2)">자동저장</span>
     <span class="hdr-save-status saved" id="save-status">● 저장됨</span>
@@ -5116,6 +5119,11 @@ function buildAssignSummaryTextCore(classIds) {
     return a.endDate || '';
   }
 
+  function shortDate(d) {
+    if (!d) return '';
+    return d.replace(/^20/, ''); // '2026-05-07' → '26-05-07'
+  }
+
   let text = '';
   let hasAny = false;
 
@@ -5150,7 +5158,9 @@ function buildAssignSummaryTextCore(classIds) {
     let lastBook = null;
     order.forEach(sigKey => {
       const g = groups[sigKey];
-      const period = g.end ? `${g.startDate}~${g.end}` : `${g.startDate}~`;
+      const period = g.end
+        ? `(${shortDate(g.startDate)}~${shortDate(g.end)})`
+        : `(${shortDate(g.startDate)}~)`;
 
       // 반 이름 목록 (그룹에 포함된 학생들의 반, 중복 제거)
       const clsIdsInGroup = [...new Set(g.entries.map(e => e.clsId))];
@@ -5161,7 +5171,7 @@ function buildAssignSummaryTextCore(classIds) {
       let namesStr = names.join(' ');
       if (clsIdsInGroup.length === 1) {
         const total = classTotalMap[clsIdsInGroup[0]] || 0;
-        if (total > 0 && names.length === total) namesStr += '(전부표시)';
+        if (total > 0 && names.length === total) namesStr += ' (전부표시)';
       }
 
       const bookCell = (g.book === lastBook) ? '' : g.book;
@@ -5198,14 +5208,11 @@ function openAssignSummaryModal(classId) {
   openModal('modal-assign-summary');
 }
 
-// 화면 표시용: 탭을 일정 너비로 맞춰 컬럼처럼 보이게 (복사되는 원본은 탭 그대로 유지)
+// 화면 표시용: 탭을 고정 공백으로 구분 (복사되는 원본은 탭 그대로 유지)
 function tabsToDisplaySpacing(text) {
   return text.split('\n').map(line => {
     if (!line.includes('\t')) return line;
-    return line.split('\t').map((cell, i) => {
-      if (i === line.split('\t').length - 1) return cell; // 마지막 칸은 패딩 없음
-      return cell.padEnd(14, ' ');
-    }).join('');
+    return line.split('\t').filter(c => c !== '').join('   ');
   }).join('\n');
 }
 
@@ -5231,23 +5238,188 @@ function copyAssignSummary() {
 }
 
 
-// 과제요약 (전체 반, 유형별 교재 리스트)
+// 과제요약 (전체 반, 유형별 교재 리스트) — 수업요약과 동일한 표(rowspan) 디자인
 function renderAssignSummaryBody() {
   try {
-    let text = '';
+    const today   = formatDate(new Date());
+    const T_ORDER = ['SV','HV','MAIN','SUB'];
+
+    function isActive(a) {
+      if (!a.startDate || a.startDate > today) return false;
+      const isVoca = a.type === 'SV' || a.type === 'HV';
+      if (isVoca) {
+        if (!a.sets) return false;
+        try {
+          const last = getLastStudyDate(a.startDate, a.sets,
+            a.type==='SV' ? (a.studyDays||null) : null, a.pausePeriods||null);
+          return last && last >= today;
+        } catch(e) { return false; }
+      }
+      return !a.endDate || a.endDate >= today;
+    }
+    function endDateOf(a) {
+      const isVoca = a.type === 'SV' || a.type === 'HV';
+      if (isVoca) {
+        try {
+          return getLastStudyDate(a.startDate, a.sets,
+            a.type==='SV' ? (a.studyDays||null) : null, a.pausePeriods||null) || '';
+        } catch(e) { return ''; }
+      }
+      return a.endDate || '';
+    }
+    function shortDate(d) { return d ? d.replace(/^20/, '') : ''; }
+
+    let rowsHTML = '';
+    let copyText = '';
+
     DB.classes.forEach(cls => {
-      text += `━━━ ${cls.name} ━━━\n` + buildClassAssignSummaryText(cls.id);
+      const students = DB.students.filter(s => s.classId === cls.id);
+      if (!students.length) return;
+
+      // 이 반의 유형별 그룹(시그니처 기준) 수집
+      const typeGroupsRaw = T_ORDER.map(type => {
+        const isVoca = type === 'SV' || type === 'HV';
+        const groups = {};
+        const order  = [];
+        students.forEach(stu => {
+          const a = DB.assignments.find(x => x.studentId === stu.id && x.type === type && isActive(x));
+          if (!a) return;
+          const sigKey = [a.book, a.startDate, a.sets||'', a.perSet||'', a.memorize||'', a.recall||'', a.test||'', a.testType||''].join('|');
+          if (!groups[sigKey]) {
+            groups[sigKey] = {
+              book: a.book, startDate: a.startDate, end: endDateOf(a),
+              sets: a.sets, perSet: a.perSet, memorize: a.memorize,
+              recall: a.recall, test: a.test, testType: a.testType,
+              names: [],
+            };
+            order.push(sigKey);
+          }
+          groups[sigKey].names.push(stu.name);
+        });
+        const rows = order.map(k => ({ type, isVoca, ...groups[k] }));
+        return { type, rows };
+      }).filter(g => g.rows.length > 0);
+
+      if (!typeGroupsRaw.length) return;
+
+      copyText += `━━━ ${cls.name} ━━━\n`;
+
+      const clsTotalRows = typeGroupsRaw.reduce((n, g) => n + g.rows.length, 0);
+      let clsFirstRow = true;
+
+      typeGroupsRaw.forEach((group, gi) => {
+        const isLastGroup = gi === typeGroupsRaw.length - 1;
+        copyText += `${TYPE_LABELS[group.type]}\n`;
+        let lastBook = null;
+        let typeFirstRow = true;
+
+        group.rows.forEach((row, ri) => {
+          const isLastRowOfClass = isLastGroup && (ri === group.rows.length - 1);
+          const isLastRowOfType  = ri === group.rows.length - 1;
+          const lastCls  = isLastRowOfClass ? ' sum-cls-border' : '';
+          const lastType = (isLastRowOfType && !isLastRowOfClass) ? ' sum-type-border' : '';
+
+          const period = row.end
+            ? `(${shortDate(row.startDate)}~${shortDate(row.end)})`
+            : `(${shortDate(row.startDate)}~)`;
+
+          const specChips = row.isVoca ? [
+            row.sets     ? `<span class="chip-sm">${row.sets}세트</span>` : '',
+            row.perSet   ? `<span class="chip-sm">1set ${row.perSet}</span>` : '',
+            row.memorize ? `<span class="chip-sm">암기${row.memorize}</span>` : '',
+            row.recall   ? `<span class="chip-sm">리콜${row.recall}</span>` : '',
+            row.test     ? `<span class="chip-sm">${row.testType||'테스트'} ${row.test}점</span>` : '',
+          ].filter(Boolean).join('') : '';
+
+          const isAll = row.names.length === students.length;
+          const targetHTML = isAll
+            ? `<span class="sum-target-all">전체</span>`
+            : `<span class="sum-target-stu">${row.names.join(', ')}</span>`;
+
+          rowsHTML += '<tr>';
+          if (clsFirstRow) {
+            rowsHTML += `
+              <td class="sum-td sum-cls-td" rowspan="${clsTotalRows}" style="border-bottom:2px solid var(--border2)">
+                <span style="display:flex;align-items:center;gap:6px">
+                  <span style="width:8px;height:8px;border-radius:50%;flex-shrink:0;
+                    background:${cls.color||'var(--blue)'}"></span>${cls.name}
+                </span>
+              </td>`;
+            clsFirstRow = false;
+          }
+          if (typeFirstRow) {
+            const typeCellBorderClass = isLastGroup ? ' sum-cls-border' : ' sum-type-border';
+            rowsHTML += `
+              <td class="sum-td sum-type-td${typeCellBorderClass}" rowspan="${group.rows.length}">
+                <span class="type-chip ${TYPE_CHIPS[group.type]}">${TYPE_LABELS[group.type]}</span>
+              </td>`;
+            typeFirstRow = false;
+          }
+
+          const bookCell = (row.book === lastBook) ? '' : row.book;
+          lastBook = row.book;
+
+          rowsHTML += `
+              <td class="sum-td sum-book-td${lastCls}${lastType}">${bookCell}</td>
+              <td class="sum-td${lastCls}${lastType}" style="white-space:nowrap;color:var(--text3);font-size:11px">${period}</td>
+              <td class="sum-td${lastCls}${lastType}">${specChips}</td>
+              <td class="sum-td sum-target-td${lastCls}${lastType}">${targetHTML}</td>
+            </tr>`;
+
+          // 복사용 텍스트 (탭 구분, 엑셀 붙여넣기용)
+          const clsNamesStr = cls.name;
+          let namesStr = row.names.join(' ');
+          if (isAll) namesStr += ' (전부표시)';
+          const cols = [bookCell, period];
+          if (row.isVoca) {
+            cols.push(row.sets ? `${row.sets}세트` : '');
+            cols.push(row.perSet ? `1set ${row.perSet}` : '');
+            const extra = [];
+            if (row.memorize) extra.push(`암기${row.memorize}`);
+            if (row.recall)   extra.push(`리콜${row.recall}`);
+            if (row.test)     extra.push(`${row.testType||'테스트'} ${row.test}점`);
+            cols.push(extra.join(' '));
+          }
+          cols.push(clsNamesStr, namesStr);
+          copyText += cols.join('\t') + '\n';
+        });
+      });
+      copyText += '\n';
     });
-    _assignSummaryText = text.trim() || '진행중인 과제가 없습니다.';
+
+    _assignSummaryText = copyText.trim() || '진행중인 과제가 없습니다.';
+
+    if (!rowsHTML) {
+      return `
+        <div class="page-header">
+          <div class="page-title">과제 요약</div>
+          <div class="page-sub">전체 반 · 유형별 교재 리스트</div>
+        </div>
+        <div class="empty-state">
+          <div class="empty-icon">📋</div>
+          <div class="empty-title">진행중인 과제가 없습니다</div>
+        </div>`;
+    }
 
     return `
       <div class="page-header">
         <div class="page-title">과제 요약</div>
         <div class="page-sub">전체 반 · 유형별 교재 리스트 (수업보카→홈보카→주교재→부교재)</div>
       </div>
-      <div class="card" style="padding:16px 18px">
-        <div style="font-size:13px;line-height:1.9;white-space:pre-wrap;
-          font-family:'Noto Sans KR',monospace">${tabsToDisplaySpacing(_assignSummaryText).replace(/</g,'&lt;')}</div>
+      <div class="card" style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+        <table class="sum-table" style="min-width:820px">
+          <thead>
+            <tr>
+              <th class="sum-th" style="width:70px">반</th>
+              <th class="sum-th" style="width:100px">유형</th>
+              <th class="sum-th">교재명</th>
+              <th class="sum-th" style="width:150px">기간</th>
+              <th class="sum-th" style="width:200px">조건</th>
+              <th class="sum-th">대상</th>
+            </tr>
+          </thead>
+          <tbody>${rowsHTML}</tbody>
+        </table>
       </div>`;
   } catch(e) {
     console.error('[과제요약] 오류:', e);
