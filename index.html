@@ -479,7 +479,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   <button class="hdr-hamburger" onclick="toggleSidebar()" aria-label="메뉴 열기">☰</button>
   <span class="hdr-logo">🏫</span>
   <span class="hdr-title">학원 학습 관리 시스템</span>
-  <span class="hdr-badge">v2.0</span>
+  <span class="hdr-badge">v2.1</span>
   <div class="hdr-right">
     <span style="font-size:10px;color:var(--sb-text2)">자동저장</span>
     <span class="hdr-save-status saved" id="save-status">● 저장됨</span>
@@ -5366,7 +5366,7 @@ function renderAssignSummaryBody() {
       DB.students.forEach(stu => {
         const a = DB.assignments.find(x => x.studentId === stu.id && x.type === type && isActive(x));
         if (!a) return;
-        const sigKey = [a.book, a.startDate, a.sets||'', a.perSet||'', a.memorize||'', a.recall||'', a.test||'', a.testType||''].join('|');
+        const sigKey = [a.book, a.startDate, a.sets||'', a.perSet||'', a.memorize||'', a.recall||'', a.test||'', a.testType||'', stu.classId].join('|');
         if (!groups[sigKey]) {
           groups[sigKey] = {
             book: a.book, startDate: a.startDate, end: endDateOf(a),
@@ -5413,11 +5413,12 @@ function renderAssignSummaryBody() {
       bookOrder.forEach(b => { bookFirstFlag[b] = true; });
 
       sortedRows.forEach((row, ri) => {
-        const isLastRowOfType = isLastGroup && (ri === sortedRows.length - 1);
-        const lastType = isLastRowOfType ? ' sum-cls-border' : (ri === sortedRows.length - 1 ? ' sum-type-border' : '');
+        const isLastRowOfType = ri === sortedRows.length - 1;
+        // 모든 유형(수업보카/홈보카/주교재/부교재) 경계에 동일하게 진한 구분선 적용
+        const lastType = isLastRowOfType ? ' sum-cls-border' : '';
         // 다음 행이 다른 book이면(=이 book의 마지막 행) 중간 구분선 추가
         const isLastRowOfBook = (ri === sortedRows.length - 1) || (sortedRows[ri+1].book !== row.book);
-        const bookBorder = (isLastRowOfBook && !isLastRowOfType && ri !== sortedRows.length - 1) ? ' sum-type-border' : '';
+        const bookBorder = (isLastRowOfBook && !isLastRowOfType) ? ' sum-type-border' : '';
 
         const period = row.end
           ? `(${shortDate(row.startDate)}~${shortDate(row.end)})`
@@ -5440,9 +5441,8 @@ function renderAssignSummaryBody() {
 
         rowsHTML += '<tr>';
         if (typeFirstRow) {
-          const typeCellBorderClass = isLastGroup ? ' sum-cls-border' : ' sum-type-border';
           rowsHTML += `
-            <td class="sum-td sum-type-td${typeCellBorderClass}" rowspan="${sortedRows.length}"
+            <td class="sum-td sum-type-td sum-cls-border" rowspan="${sortedRows.length}"
               style="border-right:2px solid var(--border2)">
               <span class="type-chip ${TYPE_CHIPS[group.type]}">${TYPE_LABELS[group.type]}</span>
             </td>`;
