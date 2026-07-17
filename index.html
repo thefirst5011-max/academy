@@ -669,6 +669,25 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   </div>
 </div>
 
+<!-- 과제 요약 모달 (반별 진행중 과제 리스트) -->
+<div class="modal-overlay" id="modal-assign-summary" onclick="closeModalOutside(event,'modal-assign-summary')">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <span class="modal-title" id="assign-summary-title">과제 요약</span>
+      <button class="modal-close" onclick="closeModal('modal-assign-summary')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="assign-summary-body" style="font-size:13px;line-height:1.9;white-space:pre-wrap;
+        font-family:'Noto Sans KR',monospace;background:var(--surface2);border:1px solid var(--border);
+        border-radius:8px;padding:16px 18px;max-height:60vh;overflow-y:auto"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('modal-assign-summary')">닫기</button>
+      <button class="btn btn-primary btn-sm" onclick="copyAssignSummary()">📋 텍스트 복사</button>
+    </div>
+  </div>
+</div>
+
 <!-- 과제 추가 모달 -->
 <div class="modal-overlay" id="modal-add-assign" onclick="closeModalOutside(event,'modal-add-assign')">
   <div class="modal modal-lg">
@@ -2872,6 +2891,7 @@ function renderAssignPage() {
           <span class="card-title">${cls.name}</span>
           <span class="badge b-gray">${students.length}명</span>
           <button class="btn btn-ghost btn-sm" style="margin-left:auto;color:var(--text2)" onclick="collapseAllInClass('${cls.id}')">▲ 전체 닫기</button>
+          <button class="btn btn-ghost btn-sm" style="color:var(--blue)" onclick="openAssignSummaryModal('${cls.id}')">📋 과제 요약</button>
           <button class="btn btn-success btn-sm" onclick="openAddAssignModal('${cls.id}')">＋ 과제 추가</button>
         </div>
         <div style="padding:0">${studentsHTML}</div>
@@ -4911,6 +4931,83 @@ function renderStudentSummaryPage() {
       <div class="empty-title">데이터를 불러오는 중입니다</div>
       <div class="empty-sub">잠시 후 다시 클릭해 보세요</div></div>`;
   }
+}
+
+// ── 과제 요약 (반별 진행중 과제 리스트 팝업) ──────────────────
+let _assignSummaryText = ''; // 복사용 원본 텍스트
+
+function openAssignSummaryModal(classId) {
+  const today = formatDate(new Date());
+  const cls   = DB.classes.find(c => c.id === classId);
+  if (!cls) return;
+
+  const students = DB.students.filter(s => s.classId === classId);
+  const T_ORDER  = ['SV','HV','MAIN','SUB'];
+
+  function isActive(a) {
+    if (!a.startDate || a.startDate > today) return false;
+    const isVoca = a.type === 'SV' || a.type === 'HV';
+    if (isVoca) {
+      if (!a.sets) return false;
+      try {
+        const last = getLastStudyDate(a.startDate, a.sets,
+          a.type==='SV' ? (a.studyDays||null) : null, a.pausePeriods||null);
+        return last && last >= today;
+      } catch(e) { return false; }
+    }
+    return !a.endDate || a.endDate >= today;
+  }
+
+  // 세부조건 텍스트 생성 (보카: 1set/회차/암기/리콜/테스트, 교재: 없음)
+  function specText(a) {
+    const parts = [];
+    if (a.perSet)   parts.push(`1set ${a.perSet}`);
+    if (a.sets)     parts.push(`회차${a.sets}`);
+    if (a.memorize) parts.push(`암기${a.memorize}`);
+    if (a.recall)   parts.push(`리콜${a.recall}`);
+    if (a.test)     parts.push(`${a.testType || '테스트'} ${a.test}점`);
+    return parts.length ? '  ' + parts.join(' ') : '';
+  }
+
+  let text = `[${cls.name}] 과제 요약 (${today} 기준)\n\n`;
+  let hasAny = false;
+
+  T_ORDER.forEach(type => {
+    // 이 유형에서 진행중인 과제를 교재명 기준으로 그룹핑 (중복 제거, 대표 스펙 사용)
+    const bookMap = {}; // book -> {spec, count}
+    students.forEach(stu => {
+      const a = DB.assignments.find(x => x.studentId === stu.id && x.type === type && isActive(x));
+      if (!a) return;
+      if (!bookMap[a.book]) bookMap[a.book] = { spec: specText(a), count: 0 };
+      bookMap[a.book].count++;
+    });
+
+    const books = Object.keys(bookMap);
+    if (!books.length) return;
+
+    hasAny = true;
+    text += `${TYPE_LABELS[type]}\n`;
+    books.forEach((book, idx) => {
+      const { spec, count } = bookMap[book];
+      const countTxt = count < students.length ? ` (${count}명)` : '';
+      text += `${idx + 1}. ${book}${spec}${countTxt}\n`;
+    });
+    text += '\n';
+  });
+
+  if (!hasAny) text += '진행중인 과제가 없습니다.\n';
+
+  _assignSummaryText = text.trim();
+  document.getElementById('assign-summary-title').textContent = `${cls.name} · 과제 요약`;
+  document.getElementById('assign-summary-body').textContent = _assignSummaryText;
+  openModal('modal-assign-summary');
+}
+
+function copyAssignSummary() {
+  if (!_assignSummaryText) return;
+  navigator.clipboard.writeText(_assignSummaryText)
+    .then(() => toast('과제 요약이 복사되었습니다.', 'success'))
+    .catch(() => toast('복사에 실패했습니다.', 'error'));
 }
 
 function showLibTab(type, btn) {
