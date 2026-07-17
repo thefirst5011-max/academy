@@ -450,7 +450,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 <header class="app-header">
   <span class="hdr-logo">🏫</span>
   <span class="hdr-title">학원 학습 관리 시스템</span>
-  <span class="hdr-badge">v1.0</span>
+  <span class="hdr-badge">v1.1</span>
   <div class="hdr-right">
     <span style="font-size:10px;color:var(--sb-text2)">자동저장</span>
     <span class="hdr-save-status saved" id="save-status">● 저장됨</span>
@@ -2899,11 +2899,12 @@ function renderAssignPage() {
   }).join('');
 
   const viewToggleHTML = `
-    <div style="display:flex;align-items:center;gap:6px;margin-bottom:12px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
       <div style="display:flex;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:3px;gap:3px">
         <button class="btn btn-sm ${_assignViewMode==='student'?'btn-primary':'btn-ghost'}" onclick="setAssignViewMode('student')">학생별 보기</button>
         <button class="btn btn-sm ${_assignViewMode==='type'?'btn-primary':'btn-ghost'}"   onclick="setAssignViewMode('type')">유형별 보기</button>
       </div>
+      <button class="btn btn-ghost btn-sm" style="color:var(--blue)" onclick="openAllAssignSummaryModal()">📋 유형별 교재 리스트 요약</button>
     </div>`;
 
   const mainContent = _assignViewMode === 'student' ? `
@@ -4933,14 +4934,12 @@ function renderStudentSummaryPage() {
   }
 }
 
-// ── 과제 요약 (반별 진행중 과제 리스트 팝업) ──────────────────
+// ── 과제 요약 (반별/전체 진행중 과제 리스트 팝업) ──────────────
 let _assignSummaryText = ''; // 복사용 원본 텍스트
 
-function openAssignSummaryModal(classId) {
+// 특정 반의 유형별 교재 요약 텍스트 생성 (헤더 줄 제외, 본문만)
+function buildClassAssignSummaryBody(classId) {
   const today = formatDate(new Date());
-  const cls   = DB.classes.find(c => c.id === classId);
-  if (!cls) return;
-
   const students = DB.students.filter(s => s.classId === classId);
   const T_ORDER  = ['SV','HV','MAIN','SUB'];
 
@@ -4958,7 +4957,6 @@ function openAssignSummaryModal(classId) {
     return !a.endDate || a.endDate >= today;
   }
 
-  // 세부조건 텍스트 생성 (보카: 1set/회차/암기/리콜/테스트, 교재: 없음)
   function specText(a) {
     const parts = [];
     if (a.perSet)   parts.push(`1set ${a.perSet}`);
@@ -4969,12 +4967,11 @@ function openAssignSummaryModal(classId) {
     return parts.length ? '  ' + parts.join(' ') : '';
   }
 
-  let text = `[${cls.name}] 과제 요약 (${today} 기준)\n\n`;
+  let text = '';
   let hasAny = false;
 
   T_ORDER.forEach(type => {
-    // 이 유형에서 진행중인 과제를 교재명 기준으로 그룹핑 (중복 제거, 대표 스펙 사용)
-    const bookMap = {}; // book -> {spec, count}
+    const bookMap = {};
     students.forEach(stu => {
       const a = DB.assignments.find(x => x.studentId === stu.id && x.type === type && isActive(x));
       if (!a) return;
@@ -4995,10 +4992,35 @@ function openAssignSummaryModal(classId) {
     text += '\n';
   });
 
-  if (!hasAny) text += '진행중인 과제가 없습니다.\n';
+  if (!hasAny) text += '진행중인 과제가 없습니다.\n\n';
+  return text;
+}
+
+function openAssignSummaryModal(classId) {
+  const today = formatDate(new Date());
+  const cls   = DB.classes.find(c => c.id === classId);
+  if (!cls) return;
+
+  const text = `[${cls.name}] 과제 요약 (${today} 기준)\n\n` + buildClassAssignSummaryBody(classId);
 
   _assignSummaryText = text.trim();
   document.getElementById('assign-summary-title').textContent = `${cls.name} · 과제 요약`;
+  document.getElementById('assign-summary-body').textContent = _assignSummaryText;
+  openModal('modal-assign-summary');
+}
+
+// 전체 반을 모아서 유형별 교재 리스트 요약 (과제설정 상단 버튼)
+function openAllAssignSummaryModal() {
+  const today = formatDate(new Date());
+  let text = `전체 반 · 유형별 교재 리스트 요약 (${today} 기준)\n\n`;
+
+  DB.classes.forEach(cls => {
+    text += `━━━ ${cls.name} ━━━\n`;
+    text += buildClassAssignSummaryBody(cls.id);
+  });
+
+  _assignSummaryText = text.trim();
+  document.getElementById('assign-summary-title').textContent = `전체 반 · 유형별 교재 리스트 요약`;
   document.getElementById('assign-summary-body').textContent = _assignSummaryText;
   openModal('modal-assign-summary');
 }
