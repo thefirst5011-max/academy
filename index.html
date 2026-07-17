@@ -453,7 +453,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 <header class="app-header">
   <span class="hdr-logo">🏫</span>
   <span class="hdr-title">학원 학습 관리 시스템</span>
-  <span class="hdr-badge">v1.6</span>
+  <span class="hdr-badge">v1.7</span>
   <div class="hdr-right">
     <span style="font-size:10px;color:var(--sb-text2)">자동저장</span>
     <span class="hdr-save-status saved" id="save-status">● 저장됨</span>
@@ -4628,87 +4628,105 @@ function renderClassSummaryPage() {
     <div class="empty-state"><div class="empty-icon">📋</div>
     <div class="empty-title">반 데이터가 없습니다</div></div>`;
 
-  function getActiveAssign(stuId, type) {
-    if (!DB.assignments) return null;
-    const isVoca = type === 'SV' || type === 'HV';
-    return DB.assignments.find(a => {
-      if (a.studentId !== stuId || a.type !== type) return false;
-      if (!a.startDate || a.startDate > today)       return false;
-      if (isVoca) {
-        if (!a.sets) return false;
-        try {
-          const last = getLastStudyDate(a.startDate, a.sets,
-            type==='SV' ? (a.studyDays||null) : null, a.pausePeriods||null);
-          return last && last >= today;
-        } catch(e) { return false; }
-      }
-      return !a.endDate || a.endDate >= today;
-    });
+  function isActive(a) {
+    if (!a.startDate || a.startDate > today) return false;
+    const isVoca = a.type === 'SV' || a.type === 'HV';
+    if (isVoca) {
+      if (!a.sets) return false;
+      try {
+        const last = getLastStudyDate(a.startDate, a.sets,
+          a.type==='SV' ? (a.studyDays||null) : null, a.pausePeriods||null);
+        return last && last >= today;
+      } catch(e) { return false; }
+    }
+    return !a.endDate || a.endDate >= today;
+  }
+  function endDateOf(a) {
+    const isVoca = a.type === 'SV' || a.type === 'HV';
+    if (isVoca) {
+      try {
+        return getLastStudyDate(a.startDate, a.sets,
+          a.type==='SV' ? (a.studyDays||null) : null, a.pausePeriods||null) || '';
+      } catch(e) { return ''; }
+    }
+    return a.endDate || '';
+  }
+  function shortDate(d) { return d ? d.replace(/^20/, '') : ''; }
+  function condText(row) {
+    if (!row.isVoca) return '';
+    const parts = [];
+    if (row.sets)     parts.push(`${row.sets}세트`);
+    if (row.perSet)   parts.push(`1set ${row.perSet}`);
+    if (row.memorize) parts.push(`암기${row.memorize}`);
+    if (row.recall)   parts.push(`리콜${row.recall}`);
+    if (row.test)     parts.push(`${row.testType||'테스트'} ${row.test}점`);
+    return parts.join(' · ');
   }
 
-  let summaryRowsHTML = '';
+  let rowsHTML  = '';
+  let copyText  = '';
 
   DB.classes.forEach(cls => {
     const students = DB.students.filter(s => s.classId === cls.id);
     if (!students.length) return;
 
-    // 유형별 교재 그룹 수집
-    const typeBlocks = T_ORDER.map(type => {
-      const hit = students.map(s => {
-        const a = getActiveAssign(s.id, type);
-        return a ? { name: s.name, book: a.book } : null;
-      }).filter(Boolean);
-      if (!hit.length) return [];
-
+    // 이 반의 유형별 그룹(시그니처 기준) 수집
+    const typeGroupsRaw = T_ORDER.map(type => {
+      const isVoca = type === 'SV' || type === 'HV';
       const groups = {};
-      hit.forEach(({ name, book }) => {
-        if (!groups[book]) groups[book] = [];
-        groups[book].push(name);
+      const order  = [];
+      students.forEach(stu => {
+        const a = DB.assignments.find(x => x.studentId === stu.id && x.type === type && isActive(x));
+        if (!a) return;
+        const sigKey = [a.book, a.startDate, a.sets||'', a.perSet||'', a.memorize||'', a.recall||'', a.test||'', a.testType||''].join('|');
+        if (!groups[sigKey]) {
+          groups[sigKey] = {
+            book: a.book, startDate: a.startDate, end: endDateOf(a),
+            sets: a.sets, perSet: a.perSet, memorize: a.memorize,
+            recall: a.recall, test: a.test, testType: a.testType,
+            names: [],
+          };
+          order.push(sigKey);
+        }
+        groups[sigKey].names.push(stu.name);
       });
+      const rows = order.map(k => ({ type, isVoca, ...groups[k] }));
+      return { type, rows };
+    }).filter(g => g.rows.length > 0);
 
-      return Object.entries(groups).map(([book, names]) => ({
-        type,
-        book,
-        isAll: names.length === students.length,
-        names,
-      }));
-    }).flat();
+    if (!typeGroupsRaw.length) return;
 
-    if (!typeBlocks.length) return;
+    copyText += `━━━ ${cls.name} ━━━\n`;
 
-    const clsRowSpan   = typeBlocks.length;
-    const clsTotalRows = typeBlocks.length;
+    const clsTotalRows = typeGroupsRaw.reduce((n, g) => n + g.rows.length, 0);
     let clsFirstRow = true;
-    let rowCounter  = 0;
 
-    // 유형별 그룹 목록(순서대로) — 각 그룹의 마지막 rowCounter를 미리 알기 위해
-    const typeGroups = T_ORDER
-      .map(type => ({ type, rows: typeBlocks.filter(r => r.type === type) }))
-      .filter(g => g.rows.length > 0);
-
-    typeGroups.forEach((group, gi) => {
-      const { type, rows } = group;
-      const typeRowSpan   = rows.length;
-      const isLastGroup   = gi === typeGroups.length - 1; // 이 유형이 반의 마지막 유형인지
+    typeGroupsRaw.forEach((group, gi) => {
+      const isLastGroup = gi === typeGroupsRaw.length - 1;
+      copyText += `${TYPE_LABELS[group.type]}\n`;
+      let lastBook = null;
       let typeFirstRow = true;
 
-      rows.forEach((row, ri) => {
-        rowCounter++;
-        const isLastRowOfClass = isLastGroup && (ri === rows.length - 1);
-        const isLastRowOfType  = ri === rows.length - 1;
-        const targetHTML = row.isAll
-          ? `<span class="sum-target-all">전체</span>`
-          : `<span class="sum-target-stu">${row.names.join(', ')}</span>`;
-        const memoKey = summaryMemoKey(cls.id, row.type, row.book);
-        const memoVal = (DB.summaryMemos && DB.summaryMemos[memoKey]) || '';
+      group.rows.forEach((row, ri) => {
+        const isLastRowOfClass = isLastGroup && (ri === group.rows.length - 1);
+        const isLastRowOfType  = ri === group.rows.length - 1;
         const lastCls  = isLastRowOfClass ? ' sum-cls-border' : '';
         const lastType = (isLastRowOfType && !isLastRowOfClass) ? ' sum-type-border' : '';
 
-        summaryRowsHTML += '<tr>';
+        const period = row.end
+          ? `(${shortDate(row.startDate)}~${shortDate(row.end)})`
+          : `(${shortDate(row.startDate)}~)`;
+        const cond = condText(row);
 
+        const isAll = row.names.length === students.length;
+        const targetHTML = isAll
+          ? `<span class="sum-target-all">전체</span>`
+          : `<span class="sum-target-stu">${row.names.join(', ')}</span>`;
+
+        rowsHTML += '<tr>';
         if (clsFirstRow) {
-          summaryRowsHTML += `
-            <td class="sum-td sum-cls-td" rowspan="${clsRowSpan}" style="border-bottom:2px solid var(--border2)">
+          rowsHTML += `
+            <td class="sum-td sum-cls-td" rowspan="${clsTotalRows}" style="border-bottom:2px solid var(--border2)">
               <span style="display:flex;align-items:center;gap:6px">
                 <span style="width:8px;height:8px;border-radius:50%;flex-shrink:0;
                   background:${cls.color||'var(--blue)'}"></span>${cls.name}
@@ -4717,30 +4735,34 @@ function renderClassSummaryPage() {
           clsFirstRow = false;
         }
         if (typeFirstRow) {
-          // 이 유형 블록의 마지막 여부(=isLastGroup)에 따라 rowspan 셀 하단 테두리 결정
           const typeCellBorderClass = isLastGroup ? ' sum-cls-border' : ' sum-type-border';
-          summaryRowsHTML += `
-            <td class="sum-td sum-type-td${typeCellBorderClass}" rowspan="${typeRowSpan}">
-              <span class="type-chip ${TYPE_CHIPS[type]}">${TYPE_LABELS[type]}</span>
+          rowsHTML += `
+            <td class="sum-td sum-type-td${typeCellBorderClass}" rowspan="${group.rows.length}">
+              <span class="type-chip ${TYPE_CHIPS[group.type]}">${TYPE_LABELS[group.type]}</span>
             </td>`;
           typeFirstRow = false;
         }
 
-        summaryRowsHTML += `
-            <td class="sum-td sum-book-td${lastCls}${lastType}">${row.book}</td>
+        const bookCell = (row.book === lastBook) ? '' : row.book;
+        lastBook = row.book;
+
+        rowsHTML += `
+            <td class="sum-td sum-book-td${lastCls}${lastType}">${bookCell}</td>
             <td class="sum-td sum-target-td${lastCls}${lastType}">${targetHTML}</td>
-            <td class="sum-td sum-memo-td${lastCls}${lastType}">
-              <input type="text" class="sum-memo-input" value="${memoVal.replace(/"/g,'&quot;')}"
-                placeholder="메모 입력..."
-                onchange="saveSummaryMemo('${memoKey}', this.value)"
-                onblur="saveSummaryMemo('${memoKey}', this.value)">
-            </td>
+            <td class="sum-td${lastCls}${lastType}" style="white-space:nowrap;color:var(--text3);font-size:11px">${period}</td>
+            <td class="sum-td${lastCls}${lastType}" style="white-space:nowrap;color:var(--text3);font-size:11px">${cond}</td>
           </tr>`;
+
+        // 복사용 텍스트 (탭 구분, 엑셀 붙여넣기용)
+        let namesStr = row.names.join(' ');
+        if (isAll) namesStr += ' (전부표시)';
+        copyText += [bookCell, cls.name, namesStr, period, cond].join('\t') + '\n';
       });
     });
+    copyText += '\n';
   });
 
-  if (!summaryRowsHTML) {
+  if (!rowsHTML) {
     return `
       <div class="page-header">
         <div class="page-title">수업 요약</div>
@@ -4761,14 +4783,15 @@ function renderClassSummaryPage() {
       <table class="sum-table" style="min-width:760px">
         <thead>
           <tr>
-            <th class="sum-th" style="width:70px">반</th>
+            <th class="sum-th" style="width:56px">반</th>
             <th class="sum-th" style="width:100px">유형</th>
             <th class="sum-th">교재명</th>
             <th class="sum-th">대상</th>
-            <th class="sum-th" style="width:170px">메모</th>
+            <th class="sum-th" style="width:150px">기간</th>
+            <th class="sum-th" style="width:200px">조건</th>
           </tr>
         </thead>
-        <tbody>${summaryRowsHTML}</tbody>
+        <tbody>${rowsHTML}</tbody>
       </table>
     </div>`;
   } catch(e) {
@@ -5268,132 +5291,56 @@ function renderAssignSummaryBody() {
       return a.endDate || '';
     }
     function shortDate(d) { return d ? d.replace(/^20/, '') : ''; }
+    function condText(row) {
+      if (!row.isVoca) return '';
+      const parts = [];
+      if (row.sets)     parts.push(`${row.sets}세트`);
+      if (row.perSet)   parts.push(`1set ${row.perSet}`);
+      if (row.memorize) parts.push(`암기${row.memorize}`);
+      if (row.recall)   parts.push(`리콜${row.recall}`);
+      if (row.test)     parts.push(`${row.testType||'테스트'} ${row.test}점`);
+      return parts.join(' · ');
+    }
+
+    const classTotalMap = {}; // classId -> 총원
+    DB.classes.forEach(c => { classTotalMap[c.id] = DB.students.filter(s => s.classId === c.id).length; });
+    const classNameMap = {};
+    DB.classes.forEach(c => { classNameMap[c.id] = c.name; });
 
     let rowsHTML = '';
     let copyText = '';
 
-    DB.classes.forEach(cls => {
-      const students = DB.students.filter(s => s.classId === cls.id);
-      if (!students.length) return;
+    // 유형(수업보카→홈보카→주교재→부교재)이 최상위 그룹
+    const typeGroups = T_ORDER.map(type => {
+      const isVoca = type === 'SV' || type === 'HV';
+      const groups = {}; // sigKey(교재+시작일+조건) -> {book, startDate, end, ..., entries:[{clsId, stuName}]}
+      const order  = [];
 
-      // 이 반의 유형별 그룹(시그니처 기준) 수집
-      const typeGroupsRaw = T_ORDER.map(type => {
-        const isVoca = type === 'SV' || type === 'HV';
-        const groups = {};
-        const order  = [];
-        students.forEach(stu => {
-          const a = DB.assignments.find(x => x.studentId === stu.id && x.type === type && isActive(x));
-          if (!a) return;
-          const sigKey = [a.book, a.startDate, a.sets||'', a.perSet||'', a.memorize||'', a.recall||'', a.test||'', a.testType||''].join('|');
-          if (!groups[sigKey]) {
-            groups[sigKey] = {
-              book: a.book, startDate: a.startDate, end: endDateOf(a),
-              sets: a.sets, perSet: a.perSet, memorize: a.memorize,
-              recall: a.recall, test: a.test, testType: a.testType,
-              names: [],
-            };
-            order.push(sigKey);
-          }
-          groups[sigKey].names.push(stu.name);
-        });
-        const rows = order.map(k => ({ type, isVoca, ...groups[k] }));
-        return { type, rows };
-      }).filter(g => g.rows.length > 0);
-
-      if (!typeGroupsRaw.length) return;
-
-      copyText += `━━━ ${cls.name} ━━━\n`;
-
-      const clsTotalRows = typeGroupsRaw.reduce((n, g) => n + g.rows.length, 0);
-      let clsFirstRow = true;
-
-      typeGroupsRaw.forEach((group, gi) => {
-        const isLastGroup = gi === typeGroupsRaw.length - 1;
-        copyText += `${TYPE_LABELS[group.type]}\n`;
-        let lastBook = null;
-        let typeFirstRow = true;
-
-        group.rows.forEach((row, ri) => {
-          const isLastRowOfClass = isLastGroup && (ri === group.rows.length - 1);
-          const isLastRowOfType  = ri === group.rows.length - 1;
-          const lastCls  = isLastRowOfClass ? ' sum-cls-border' : '';
-          const lastType = (isLastRowOfType && !isLastRowOfClass) ? ' sum-type-border' : '';
-
-          const period = row.end
-            ? `(${shortDate(row.startDate)}~${shortDate(row.end)})`
-            : `(${shortDate(row.startDate)}~)`;
-
-          const specChips = row.isVoca ? [
-            row.sets     ? `<span class="chip-sm">${row.sets}세트</span>` : '',
-            row.perSet   ? `<span class="chip-sm">1set ${row.perSet}</span>` : '',
-            row.memorize ? `<span class="chip-sm">암기${row.memorize}</span>` : '',
-            row.recall   ? `<span class="chip-sm">리콜${row.recall}</span>` : '',
-            row.test     ? `<span class="chip-sm">${row.testType||'테스트'} ${row.test}점</span>` : '',
-          ].filter(Boolean).join('') : '';
-
-          const isAll = row.names.length === students.length;
-          const targetHTML = isAll
-            ? `<span class="sum-target-all">전체</span>`
-            : `<span class="sum-target-stu">${row.names.join(', ')}</span>`;
-
-          rowsHTML += '<tr>';
-          if (clsFirstRow) {
-            rowsHTML += `
-              <td class="sum-td sum-cls-td" rowspan="${clsTotalRows}" style="border-bottom:2px solid var(--border2)">
-                <span style="display:flex;align-items:center;gap:6px">
-                  <span style="width:8px;height:8px;border-radius:50%;flex-shrink:0;
-                    background:${cls.color||'var(--blue)'}"></span>${cls.name}
-                </span>
-              </td>`;
-            clsFirstRow = false;
-          }
-          if (typeFirstRow) {
-            const typeCellBorderClass = isLastGroup ? ' sum-cls-border' : ' sum-type-border';
-            rowsHTML += `
-              <td class="sum-td sum-type-td${typeCellBorderClass}" rowspan="${group.rows.length}">
-                <span class="type-chip ${TYPE_CHIPS[group.type]}">${TYPE_LABELS[group.type]}</span>
-              </td>`;
-            typeFirstRow = false;
-          }
-
-          const bookCell = (row.book === lastBook) ? '' : row.book;
-          lastBook = row.book;
-
-          rowsHTML += `
-              <td class="sum-td sum-book-td${lastCls}${lastType}">${bookCell}</td>
-              <td class="sum-td${lastCls}${lastType}" style="white-space:nowrap;color:var(--text3);font-size:11px">${period}</td>
-              <td class="sum-td${lastCls}${lastType}">${specChips}</td>
-              <td class="sum-td sum-target-td${lastCls}${lastType}">${targetHTML}</td>
-            </tr>`;
-
-          // 복사용 텍스트 (탭 구분, 엑셀 붙여넣기용)
-          const clsNamesStr = cls.name;
-          let namesStr = row.names.join(' ');
-          if (isAll) namesStr += ' (전부표시)';
-          const cols = [bookCell, period];
-          if (row.isVoca) {
-            cols.push(row.sets ? `${row.sets}세트` : '');
-            cols.push(row.perSet ? `1set ${row.perSet}` : '');
-            const extra = [];
-            if (row.memorize) extra.push(`암기${row.memorize}`);
-            if (row.recall)   extra.push(`리콜${row.recall}`);
-            if (row.test)     extra.push(`${row.testType||'테스트'} ${row.test}점`);
-            cols.push(extra.join(' '));
-          }
-          cols.push(clsNamesStr, namesStr);
-          copyText += cols.join('\t') + '\n';
-        });
+      DB.students.forEach(stu => {
+        const a = DB.assignments.find(x => x.studentId === stu.id && x.type === type && isActive(x));
+        if (!a) return;
+        const sigKey = [a.book, a.startDate, a.sets||'', a.perSet||'', a.memorize||'', a.recall||'', a.test||'', a.testType||''].join('|');
+        if (!groups[sigKey]) {
+          groups[sigKey] = {
+            book: a.book, startDate: a.startDate, end: endDateOf(a),
+            sets: a.sets, perSet: a.perSet, memorize: a.memorize,
+            recall: a.recall, test: a.test, testType: a.testType,
+            entries: [],
+          };
+          order.push(sigKey);
+        }
+        groups[sigKey].entries.push({ clsId: stu.classId, stuName: stu.name });
       });
-      copyText += '\n';
-    });
 
-    _assignSummaryText = copyText.trim() || '진행중인 과제가 없습니다.';
+      const rows = order.map(k => ({ type, isVoca, ...groups[k] }));
+      return { type, rows };
+    }).filter(g => g.rows.length > 0);
 
-    if (!rowsHTML) {
+    if (!typeGroups.length) {
       return `
         <div class="page-header">
           <div class="page-title">과제 요약</div>
-          <div class="page-sub">전체 반 · 유형별 교재 리스트</div>
+          <div class="page-sub">유형별(수업보카→홈보카→주교재→부교재) 교재 리스트</div>
         </div>
         <div class="empty-state">
           <div class="empty-icon">📋</div>
@@ -5401,21 +5348,81 @@ function renderAssignSummaryBody() {
         </div>`;
     }
 
+    typeGroups.forEach((group, gi) => {
+      const isLastGroup = gi === typeGroups.length - 1;
+      copyText += `${TYPE_LABELS[group.type]}\n`;
+      let lastBook = null;
+      let typeFirstRow = true;
+
+      group.rows.forEach((row, ri) => {
+        const isLastRowOfType = isLastGroup && (ri === group.rows.length - 1);
+        const lastType = isLastRowOfType ? ' sum-cls-border' : (ri === group.rows.length - 1 ? ' sum-type-border' : '');
+
+        const period = row.end
+          ? `(${shortDate(row.startDate)}~${shortDate(row.end)})`
+          : `(${shortDate(row.startDate)}~)`;
+        const cond = condText(row);
+
+        // 반 이름 목록 (중복 제거)
+        const clsIdsInGroup = [...new Set(row.entries.map(e => e.clsId))];
+        const clsNamesStr = clsIdsInGroup.map(id => classNameMap[id] || '').join('/');
+
+        const names = row.entries.map(e => e.stuName);
+        let isAllOneClass = false;
+        if (clsIdsInGroup.length === 1) {
+          const total = classTotalMap[clsIdsInGroup[0]] || 0;
+          isAllOneClass = total > 0 && names.length === total;
+        }
+        const targetHTML = isAllOneClass
+          ? `<span class="sum-target-all">전체</span>`
+          : `<span class="sum-target-stu">${names.join(', ')}</span>`;
+
+        rowsHTML += '<tr>';
+        if (typeFirstRow) {
+          const typeCellBorderClass = isLastGroup ? ' sum-cls-border' : ' sum-type-border';
+          rowsHTML += `
+            <td class="sum-td sum-type-td${typeCellBorderClass}" rowspan="${group.rows.length}">
+              <span class="type-chip ${TYPE_CHIPS[group.type]}">${TYPE_LABELS[group.type]}</span>
+            </td>`;
+          typeFirstRow = false;
+        }
+
+        const bookCell = (row.book === lastBook) ? '' : row.book;
+        lastBook = row.book;
+
+        rowsHTML += `
+            <td class="sum-td sum-book-td${lastType}">${bookCell}</td>
+            <td class="sum-td${lastType}" style="white-space:nowrap;font-size:12px;color:var(--text2)">${clsNamesStr}</td>
+            <td class="sum-td sum-target-td${lastType}">${targetHTML}</td>
+            <td class="sum-td${lastType}" style="white-space:nowrap;color:var(--text3);font-size:11px">${period}</td>
+            <td class="sum-td${lastType}" style="white-space:nowrap;color:var(--text3);font-size:11px">${cond}</td>
+          </tr>`;
+
+        // 복사용 텍스트 (탭 구분)
+        let namesStr = names.join(' ');
+        if (isAllOneClass) namesStr += ' (전부표시)';
+        copyText += [bookCell, clsNamesStr, namesStr, period, cond].join('\t') + '\n';
+      });
+      copyText += '\n';
+    });
+
+    _assignSummaryText = copyText.trim() || '진행중인 과제가 없습니다.';
+
     return `
       <div class="page-header">
         <div class="page-title">과제 요약</div>
-        <div class="page-sub">전체 반 · 유형별 교재 리스트 (수업보카→홈보카→주교재→부교재)</div>
+        <div class="page-sub">유형별(수업보카→홈보카→주교재→부교재) 교재 리스트</div>
       </div>
       <div class="card" style="overflow-x:auto;-webkit-overflow-scrolling:touch">
-        <table class="sum-table" style="min-width:820px">
+        <table class="sum-table" style="min-width:800px">
           <thead>
             <tr>
-              <th class="sum-th" style="width:70px">반</th>
               <th class="sum-th" style="width:100px">유형</th>
               <th class="sum-th">교재명</th>
+              <th class="sum-th" style="width:80px">반</th>
+              <th class="sum-th">대상</th>
               <th class="sum-th" style="width:150px">기간</th>
               <th class="sum-th" style="width:200px">조건</th>
-              <th class="sum-th">대상</th>
             </tr>
           </thead>
           <tbody>${rowsHTML}</tbody>
