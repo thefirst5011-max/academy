@@ -342,7 +342,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .sum-cls-border{border-bottom:2px solid var(--border2) !important}
 .sum-type-border{border-bottom:1.5px solid var(--border2) !important}
 .sum-type-td{vertical-align:top;border-right:1px solid var(--border);white-space:nowrap}
-.sum-book-td{white-space:nowrap;font-weight:500}
+.sum-book-td{white-space:normal;word-break:keep-all;font-weight:500}
 .sum-memo-td{white-space:normal}
 .sum-target-td{white-space:normal}
 .sum-target-all{font-size:11px;font-weight:700;padding:2px 9px;border-radius:4px;
@@ -481,7 +481,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   <button class="hdr-hamburger" onclick="toggleSidebar()" aria-label="메뉴 열기">☰</button>
   <span class="hdr-logo">🏫</span>
   <span class="hdr-title">학원 학습 관리 시스템</span>
-  <span class="hdr-badge">v2.5</span>
+  <span class="hdr-badge">v2.6</span>
   <div class="hdr-right">
     <span style="font-size:10px;color:var(--sb-text2)">자동저장</span>
     <span class="hdr-save-status saved" id="save-status">● 저장됨</span>
@@ -4840,7 +4840,7 @@ function renderClassSummaryPage() {
       <table class="sum-table">
         <thead>
           <tr>
-            <th class="sum-th" style="width:56px">반</th>
+            <th class="sum-th" style="width:64px">반</th>
             <th class="sum-th" style="width:100px">유형</th>
             <th class="sum-th">교재명</th>
             <th class="sum-th">대상</th>
