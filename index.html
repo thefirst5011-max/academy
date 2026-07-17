@@ -450,7 +450,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 <header class="app-header">
   <span class="hdr-logo">🏫</span>
   <span class="hdr-title">학원 학습 관리 시스템</span>
-  <span class="hdr-badge">v1.1</span>
+  <span class="hdr-badge">v1.4</span>
   <div class="hdr-right">
     <span style="font-size:10px;color:var(--sb-text2)">자동저장</span>
     <span class="hdr-save-status saved" id="save-status">● 저장됨</span>
@@ -4934,14 +4934,16 @@ function renderStudentSummaryPage() {
   }
 }
 
-// ── 과제 요약 (반별/전체 진행중 과제 리스트 팝업) ──────────────
-let _assignSummaryText = ''; // 복사용 원본 텍스트
+// ── 과제 요약 (반별/전체 진행중 과제 리스트 팝업 — 카드형) ────
+let _assignSummaryText = ''; // 복사용 텍스트(간단 버전)
 
-// 특정 반의 유형별 교재 요약 텍스트 생성 (헤더 줄 제외, 본문만)
-function buildClassAssignSummaryBody(classId) {
-  const today = formatDate(new Date());
+// 특정 반의 유형별 교재 요약 HTML 카드 생성 (renderAssignTypeView 스타일 재사용)
+function buildClassAssignSummaryHTML(classId) {
+  const today    = formatDate(new Date());
   const students = DB.students.filter(s => s.classId === classId);
   const T_ORDER  = ['SV','HV','MAIN','SUB'];
+  const TYPE_COL   = {SV:'#3A5A9A', HV:'#A86820', MAIN:'#3E7A5A', SUB:'#7A3020'};
+  const TYPE_PCTBG = {SV:'#C8D4F0', HV:'#E8D890', MAIN:'#B8DCC4', SUB:'#EDD6CE'};
 
   function isActive(a) {
     if (!a.startDate || a.startDate > today) return false;
@@ -4957,37 +4959,203 @@ function buildClassAssignSummaryBody(classId) {
     return !a.endDate || a.endDate >= today;
   }
 
-  function specText(a) {
-    const parts = [];
-    if (a.perSet)   parts.push(`1set ${a.perSet}`);
-    if (a.sets)     parts.push(`회차${a.sets}`);
-    if (a.memorize) parts.push(`암기${a.memorize}`);
-    if (a.recall)   parts.push(`리콜${a.recall}`);
-    if (a.test)     parts.push(`${a.testType || '테스트'} ${a.test}점`);
-    return parts.length ? '  ' + parts.join(' ') : '';
+  let html = '';
+
+  T_ORDER.forEach(type => {
+    const isVoca = type === 'SV' || type === 'HV';
+
+    // 이 유형에서 진행중인 과제를 교재명 기준으로 그룹핑
+    const groups = {}; // book -> {ref, items:[{a,stu}]}
+    students.forEach(stu => {
+      const a = DB.assignments.find(x => x.studentId === stu.id && x.type === type && isActive(x));
+      if (!a) return;
+      if (!groups[a.book]) groups[a.book] = { ref: a, items: [] };
+      groups[a.book].items.push({ a, stu });
+    });
+
+    const bookNames = Object.keys(groups);
+    if (!bookNames.length) return;
+
+    const groupsHTML = bookNames.map(book => {
+      const { ref, items } = groups[book];
+
+      const condChips = isVoca ? [
+        ref.sets     ? `<span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:3px;background:var(--surface2);border:1px solid var(--border);color:var(--text2)">${ref.sets}세트</span>` : '',
+        ref.perSet   ? `<span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:3px;background:var(--surface2);border:1px solid var(--border);color:var(--text2)">1set ${ref.perSet}</span>` : '',
+        ref.memorize ? `<span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:3px;background:var(--surface2);border:1px solid var(--border);color:var(--text2)">암기 ${ref.memorize}</span>` : '',
+        ref.recall   ? `<span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:3px;background:var(--surface2);border:1px solid var(--border);color:var(--text2)">리콜 ${ref.recall}</span>` : '',
+        ref.test     ? `<span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:3px;background:var(--surface2);border:1px solid var(--border);color:var(--text2)">${ref.testType||'테스트'} ${ref.test}점</span>` : '',
+      ].filter(Boolean).join('') : '';
+
+      const stuRowsHTML = items.map(({ a, stu }) => {
+        let progressHTML = '';
+        if (isVoca) {
+          const total = a.sets || 0;
+          let doneSets = 0;
+          if (total > 0) {
+            const allDates = getStudyDates(a.startDate, total, a.type==='SV' ? (a.studyDays||null) : null, a.pausePeriods||null);
+            doneSets = allDates.filter(d => d <= today).length;
+          }
+          const pct  = total > 0 ? Math.round(doneSets / total * 100) : 0;
+          const barC = pct >= 70 ? '#2A6E4E' : pct >= 30 ? '#A86820' : '#B82222';
+          progressHTML = `
+            <span style="font-size:11px;font-weight:700;color:${TYPE_COL[type]};white-space:nowrap">${doneSets}/${total}세트</span>
+            <span style="font-size:10px;font-weight:700;padding:1px 5px;border-radius:3px;background:${TYPE_PCTBG[type]};color:${TYPE_COL[type]}">${pct}%</span>
+            <div style="width:70px;height:5px;background:var(--border);border-radius:3px;overflow:hidden;flex-shrink:0">
+              <div style="height:100%;width:${pct}%;background:${barC};border-radius:3px"></div>
+            </div>`;
+        } else {
+          const stTxt = a.endDate ? `~ ${a.endDate}` : '진행중';
+          progressHTML = `<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;background:${TYPE_PCTBG[type]};color:${TYPE_COL[type]}">${stTxt}</span>`;
+        }
+        const dateTxt = a.startDate !== ref.startDate
+          ? `<span style="font-size:10px;color:var(--text3);white-space:nowrap">${a.startDate} 시작</span>` : '';
+
+        return `
+          <div style="display:flex;align-items:center;gap:10px;padding:8px 16px 8px 30px;border-bottom:1px solid var(--border)">
+            <span style="font-size:13px;font-weight:700;min-width:64px;flex-shrink:0">${stu.name}</span>
+            ${dateTxt}
+            ${progressHTML}
+          </div>`;
+      }).join('');
+
+      return `
+        <div style="border-bottom:1px solid var(--border)">
+          <div style="display:flex;align-items:center;gap:8px;padding:9px 16px;background:var(--surface2);
+            border-bottom:1px solid var(--border);flex-wrap:wrap">
+            <span style="font-size:13px;font-weight:800;color:var(--text)">${book}</span>
+            ${ref.startDate ? `<span style="font-size:10px;color:var(--text3)">${ref.startDate} 시작</span>` : ''}
+            ${condChips}
+            <span style="font-size:11px;color:var(--text3);margin-left:2px">${items.length}명</span>
+          </div>
+          ${stuRowsHTML}
+        </div>`;
+    }).join('');
+
+    html += `
+      <div class="card" style="margin-bottom:12px;overflow:hidden">
+        <div class="card-header">
+          <span class="type-chip ${TYPE_CHIPS[type]}">${TYPE_LABELS[type]}</span>
+        </div>
+        ${groupsHTML}
+      </div>`;
+  });
+
+  if (!html) html = `<div style="padding:16px;text-align:center;color:var(--text3);font-size:12px">진행중인 과제가 없습니다.</div>`;
+  return html;
+}
+
+// 복사용 텍스트(간단 리스트 버전) — 첨부 엑셀 형식
+function buildClassAssignSummaryText(classId) {
+  return buildAssignSummaryTextCore(classId ? [classId] : null);
+}
+
+// classIds가 null이면 전체 반 대상. 배열이면 해당 반들만.
+function buildAssignSummaryTextCore(classIds) {
+  const today   = formatDate(new Date());
+  const T_ORDER = ['SV','HV','MAIN','SUB'];
+
+  const targetClasses = classIds
+    ? DB.classes.filter(c => classIds.includes(c.id))
+    : DB.classes;
+  const classIdSet = new Set(targetClasses.map(c => c.id));
+  const students = DB.students.filter(s => classIdSet.has(s.classId));
+  const classTotalMap = {}; // classId -> 학생 총원
+  targetClasses.forEach(c => {
+    classTotalMap[c.id] = DB.students.filter(s => s.classId === c.id).length;
+  });
+  const classNameMap = {};
+  targetClasses.forEach(c => { classNameMap[c.id] = c.name; });
+
+  function isActive(a) {
+    if (!a.startDate || a.startDate > today) return false;
+    const isVoca = a.type === 'SV' || a.type === 'HV';
+    if (isVoca) {
+      if (!a.sets) return false;
+      try {
+        const last = getLastStudyDate(a.startDate, a.sets,
+          a.type==='SV' ? (a.studyDays||null) : null, a.pausePeriods||null);
+        return last && last >= today;
+      } catch(e) { return false; }
+    }
+    return !a.endDate || a.endDate >= today;
+  }
+
+  function endDateOf(a) {
+    const isVoca = a.type === 'SV' || a.type === 'HV';
+    if (isVoca) {
+      try {
+        return getLastStudyDate(a.startDate, a.sets,
+          a.type==='SV' ? (a.studyDays||null) : null, a.pausePeriods||null) || '';
+      } catch(e) { return ''; }
+    }
+    return a.endDate || '';
   }
 
   let text = '';
   let hasAny = false;
 
   T_ORDER.forEach(type => {
-    const bookMap = {};
+    const isVoca = type === 'SV' || type === 'HV';
+
+    // 시그니처(교재+시작일+세부조건) 기준으로 그룹핑
+    const groups = {}; // sigKey -> {book, startDate, end, sets, perSet, memorize, recall, test, testType, entries:[{clsId, stuName}]}
+    const order = [];  // sigKey 등장 순서 보존
+
     students.forEach(stu => {
       const a = DB.assignments.find(x => x.studentId === stu.id && x.type === type && isActive(x));
       if (!a) return;
-      if (!bookMap[a.book]) bookMap[a.book] = { spec: specText(a), count: 0 };
-      bookMap[a.book].count++;
+      const sigKey = [a.book, a.startDate, a.sets||'', a.perSet||'', a.memorize||'', a.recall||'', a.test||'', a.testType||''].join('|');
+      if (!groups[sigKey]) {
+        groups[sigKey] = {
+          book: a.book, startDate: a.startDate, end: endDateOf(a),
+          sets: a.sets, perSet: a.perSet, memorize: a.memorize,
+          recall: a.recall, test: a.test, testType: a.testType,
+          entries: [],
+        };
+        order.push(sigKey);
+      }
+      groups[sigKey].entries.push({ clsId: stu.classId, stuName: stu.name });
     });
 
-    const books = Object.keys(bookMap);
-    if (!books.length) return;
-
+    if (!order.length) return;
     hasAny = true;
     text += `${TYPE_LABELS[type]}\n`;
-    books.forEach((book, idx) => {
-      const { spec, count } = bookMap[book];
-      const countTxt = count < students.length ? ` (${count}명)` : '';
-      text += `${idx + 1}. ${book}${spec}${countTxt}\n`;
+
+    // 같은 교재끼리 묶어서 정렬(첫 등장 순서 유지), 교재명은 첫 줄만 표시
+    let lastBook = null;
+    order.forEach(sigKey => {
+      const g = groups[sigKey];
+      const period = g.end ? `${g.startDate}~${g.end}` : `${g.startDate}~`;
+
+      // 반 이름 목록 (그룹에 포함된 학생들의 반, 중복 제거)
+      const clsIdsInGroup = [...new Set(g.entries.map(e => e.clsId))];
+      const clsNamesStr = clsIdsInGroup.map(id => classNameMap[id] || '').join('/');
+
+      // 학생 이름 목록 + 전부표시 여부(단일 반일 때만 판단)
+      const names = g.entries.map(e => e.stuName);
+      let namesStr = names.join(' ');
+      if (clsIdsInGroup.length === 1) {
+        const total = classTotalMap[clsIdsInGroup[0]] || 0;
+        if (total > 0 && names.length === total) namesStr += '(전부표시)';
+      }
+
+      const bookCell = (g.book === lastBook) ? '' : g.book;
+      lastBook = g.book;
+
+      const cols = [bookCell, period];
+      if (isVoca) {
+        cols.push(g.sets ? `${g.sets}세트` : '');
+        cols.push(g.perSet ? `1set ${g.perSet}` : '');
+        const extra = [];
+        if (g.memorize) extra.push(`암기${g.memorize}`);
+        if (g.recall)   extra.push(`리콜${g.recall}`);
+        if (g.test)     extra.push(`${g.testType||'테스트'} ${g.test}점`);
+        cols.push(extra.join(' '));
+      }
+      cols.push(clsNamesStr, namesStr);
+
+      text += cols.join('\t') + '\n';
     });
     text += '\n';
   });
@@ -4997,31 +5165,37 @@ function buildClassAssignSummaryBody(classId) {
 }
 
 function openAssignSummaryModal(classId) {
-  const today = formatDate(new Date());
-  const cls   = DB.classes.find(c => c.id === classId);
+  const cls = DB.classes.find(c => c.id === classId);
   if (!cls) return;
 
-  const text = `[${cls.name}] 과제 요약 (${today} 기준)\n\n` + buildClassAssignSummaryBody(classId);
-
-  _assignSummaryText = text.trim();
+  _assignSummaryText = (`[${cls.name}] 과제 요약\n\n` + buildClassAssignSummaryText(classId)).trim();
   document.getElementById('assign-summary-title').textContent = `${cls.name} · 과제 요약`;
-  document.getElementById('assign-summary-body').textContent = _assignSummaryText;
+  document.getElementById('assign-summary-body').textContent = tabsToDisplaySpacing(_assignSummaryText);
   openModal('modal-assign-summary');
+}
+
+// 화면 표시용: 탭을 일정 너비로 맞춰 컬럼처럼 보이게 (복사되는 원본은 탭 그대로 유지)
+function tabsToDisplaySpacing(text) {
+  return text.split('\n').map(line => {
+    if (!line.includes('\t')) return line;
+    return line.split('\t').map((cell, i) => {
+      if (i === line.split('\t').length - 1) return cell; // 마지막 칸은 패딩 없음
+      return cell.padEnd(14, ' ');
+    }).join('');
+  }).join('\n');
 }
 
 // 전체 반을 모아서 유형별 교재 리스트 요약 (과제설정 상단 버튼)
 function openAllAssignSummaryModal() {
-  const today = formatDate(new Date());
-  let text = `전체 반 · 유형별 교재 리스트 요약 (${today} 기준)\n\n`;
+  let text = `전체 반 · 유형별 교재 리스트 요약\n\n`;
 
   DB.classes.forEach(cls => {
-    text += `━━━ ${cls.name} ━━━\n`;
-    text += buildClassAssignSummaryBody(cls.id);
+    text += `━━━ ${cls.name} ━━━\n` + buildClassAssignSummaryText(cls.id);
   });
 
   _assignSummaryText = text.trim();
   document.getElementById('assign-summary-title').textContent = `전체 반 · 유형별 교재 리스트 요약`;
-  document.getElementById('assign-summary-body').textContent = _assignSummaryText;
+  document.getElementById('assign-summary-body').textContent = tabsToDisplaySpacing(_assignSummaryText);
   openModal('modal-assign-summary');
 }
 
@@ -5031,6 +5205,7 @@ function copyAssignSummary() {
     .then(() => toast('과제 요약이 복사되었습니다.', 'success'))
     .catch(() => toast('복사에 실패했습니다.', 'error'));
 }
+
 
 function showLibTab(type, btn) {
   ['SV','HV','MAIN','SUB'].forEach(t => {
