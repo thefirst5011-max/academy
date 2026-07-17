@@ -338,6 +338,8 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   background:var(--surface2);color:var(--text2);border:1px solid var(--border2);
   display:inline-block}
 .sum-target-stu{font-size:12px;color:var(--text2);line-height:1.6}
+@keyframes sumPeriodBlink{0%,100%{opacity:1}50%{opacity:.35}}
+.sum-period-urgent{animation:sumPeriodBlink 1s ease-in-out infinite;font-weight:700;color:#B83224 !important}
 .chip-sm{font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;
   background:var(--surface2);border:1px solid var(--border);color:var(--text2);
   display:inline-block;margin:1px 3px 1px 0;white-space:nowrap}
@@ -453,7 +455,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 <header class="app-header">
   <span class="hdr-logo">🏫</span>
   <span class="hdr-title">학원 학습 관리 시스템</span>
-  <span class="hdr-badge">v1.7</span>
+  <span class="hdr-badge">v1.8</span>
   <div class="hdr-right">
     <span style="font-size:10px;color:var(--sb-text2)">자동저장</span>
     <span class="hdr-save-status saved" id="save-status">● 저장됨</span>
@@ -4746,10 +4748,19 @@ function renderClassSummaryPage() {
         const bookCell = (row.book === lastBook) ? '' : row.book;
         lastBook = row.book;
 
+        // 종료가 오늘/내일이면 깜박이는 스타일 적용
+        let periodClass = '';
+        if (row.end) {
+          const diffDay = Math.round((new Date(row.end+'T00:00:00') - new Date(today+'T00:00:00')) / 86400000);
+          if (diffDay === 0 || diffDay === 1) periodClass = ' sum-period-urgent';
+        }
+
         rowsHTML += `
             <td class="sum-td sum-book-td${lastCls}${lastType}">${bookCell}</td>
             <td class="sum-td sum-target-td${lastCls}${lastType}">${targetHTML}</td>
-            <td class="sum-td${lastCls}${lastType}" style="white-space:nowrap;color:var(--text3);font-size:11px">${period}</td>
+            <td class="sum-td${lastCls}${lastType}" style="white-space:nowrap;color:var(--text3);font-size:11px">
+              <span class="${periodClass.trim()}">${period}</span>
+            </td>
             <td class="sum-td${lastCls}${lastType}" style="white-space:nowrap;color:var(--text3);font-size:11px">${cond}</td>
           </tr>`;
 
@@ -5351,12 +5362,26 @@ function renderAssignSummaryBody() {
     typeGroups.forEach((group, gi) => {
       const isLastGroup = gi === typeGroups.length - 1;
       copyText += `${TYPE_LABELS[group.type]}\n`;
-      let lastBook = null;
       let typeFirstRow = true;
 
-      group.rows.forEach((row, ri) => {
-        const isLastRowOfType = isLastGroup && (ri === group.rows.length - 1);
-        const lastType = isLastRowOfType ? ' sum-cls-border' : (ri === group.rows.length - 1 ? ' sum-type-border' : '');
+      // 같은 교재끼리 인접하도록 안정 정렬 (첫 등장 순서 기준으로 book 그룹화)
+      const bookOrder = [];
+      const bookSeen = new Set();
+      group.rows.forEach(r => { if (!bookSeen.has(r.book)) { bookSeen.add(r.book); bookOrder.push(r.book); } });
+      const sortedRows = bookOrder.flatMap(book => group.rows.filter(r => r.book === book));
+
+      // book별 rowspan 개수 계산
+      const bookRowSpan = {};
+      sortedRows.forEach(r => { bookRowSpan[r.book] = (bookRowSpan[r.book] || 0) + 1; });
+      const bookFirstFlag = {};
+      bookOrder.forEach(b => { bookFirstFlag[b] = true; });
+
+      sortedRows.forEach((row, ri) => {
+        const isLastRowOfType = isLastGroup && (ri === sortedRows.length - 1);
+        const lastType = isLastRowOfType ? ' sum-cls-border' : (ri === sortedRows.length - 1 ? ' sum-type-border' : '');
+        // 다음 행이 다른 book이면(=이 book의 마지막 행) 중간 구분선 추가
+        const isLastRowOfBook = (ri === sortedRows.length - 1) || (sortedRows[ri+1].book !== row.book);
+        const bookBorder = (isLastRowOfBook && !isLastRowOfType && ri !== sortedRows.length - 1) ? ' sum-type-border' : '';
 
         const period = row.end
           ? `(${shortDate(row.startDate)}~${shortDate(row.end)})`
@@ -5381,27 +5406,31 @@ function renderAssignSummaryBody() {
         if (typeFirstRow) {
           const typeCellBorderClass = isLastGroup ? ' sum-cls-border' : ' sum-type-border';
           rowsHTML += `
-            <td class="sum-td sum-type-td${typeCellBorderClass}" rowspan="${group.rows.length}">
+            <td class="sum-td sum-type-td${typeCellBorderClass}" rowspan="${sortedRows.length}">
               <span class="type-chip ${TYPE_CHIPS[group.type]}">${TYPE_LABELS[group.type]}</span>
             </td>`;
           typeFirstRow = false;
         }
 
-        const bookCell = (row.book === lastBook) ? '' : row.book;
-        lastBook = row.book;
+        // 교재명 셀: book의 첫 행에서만 rowspan으로 렌더
+        const isFirstOfBook = bookFirstFlag[row.book];
+        let bookCellHTML = '';
+        if (isFirstOfBook) {
+          bookCellHTML = `<td class="sum-td sum-book-td${lastType}" rowspan="${bookRowSpan[row.book]}">${row.book}</td>`;
+          bookFirstFlag[row.book] = false;
+        }
 
-        rowsHTML += `
-            <td class="sum-td sum-book-td${lastType}">${bookCell}</td>
-            <td class="sum-td${lastType}" style="white-space:nowrap;font-size:12px;color:var(--text2)">${clsNamesStr}</td>
-            <td class="sum-td sum-target-td${lastType}">${targetHTML}</td>
-            <td class="sum-td${lastType}" style="white-space:nowrap;color:var(--text3);font-size:11px">${period}</td>
-            <td class="sum-td${lastType}" style="white-space:nowrap;color:var(--text3);font-size:11px">${cond}</td>
+        rowsHTML += `${bookCellHTML}
+            <td class="sum-td${lastType}${bookBorder}" style="white-space:nowrap;font-size:12px;color:var(--text2)">${clsNamesStr}</td>
+            <td class="sum-td sum-target-td${lastType}${bookBorder}">${targetHTML}</td>
+            <td class="sum-td${lastType}${bookBorder}" style="white-space:nowrap;color:var(--text3);font-size:11px">${period}</td>
+            <td class="sum-td${lastType}${bookBorder}" style="white-space:nowrap;color:var(--text3);font-size:11px">${cond}</td>
           </tr>`;
 
         // 복사용 텍스트 (탭 구분)
         let namesStr = names.join(' ');
         if (isAllOneClass) namesStr += ' (전부표시)';
-        copyText += [bookCell, clsNamesStr, namesStr, period, cond].join('\t') + '\n';
+        copyText += [isFirstOfBook ? row.book : '', clsNamesStr, namesStr, period, cond].join('\t') + '\n';
       });
       copyText += '\n';
     });
