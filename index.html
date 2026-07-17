@@ -481,7 +481,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   <button class="hdr-hamburger" onclick="toggleSidebar()" aria-label="메뉴 열기">☰</button>
   <span class="hdr-logo">🏫</span>
   <span class="hdr-title">학원 학습 관리 시스템</span>
-  <span class="hdr-badge">v3.0</span>
+  <span class="hdr-badge">v3.1</span>
   <div class="hdr-right">
     <span style="font-size:10px;color:var(--sb-text2)">자동저장</span>
     <span class="hdr-save-status saved" id="save-status">● 저장됨</span>
@@ -2751,12 +2751,15 @@ function renderAssignPage() {
               ? (a.sets ? getLastStudyDate(a.startDate, a.sets, a.type==='SV' ? (a.studyDays||null) : null, a.pausePeriods||null) : '—')
               : (a.endDate || null);
 
-            const chipStart = `<span style="font-size:11px;color:var(--text3);white-space:nowrap">${a.startDate} 시작</span>`;
+            const done = isAssignDone(a);
+            const chipStart = `<span style="font-size:11px;color:var(--text2);white-space:nowrap">${a.startDate} 시작</span>`;
             const chipEnd = isTextbook
               ? (endDate
-                  ? `<span style="font-size:11px;color:#3E7A5A;font-weight:700;white-space:nowrap">~ ${endDate} 완료</span>`
-                  : `<span style="font-size:11px;color:#A86820;font-weight:700;white-space:nowrap">진행중</span>`)
-              : `<span style="font-size:11px;color:var(--text3);white-space:nowrap">~ ${endDate}</span>`;
+                  ? `<span style="font-size:11px;color:#2A5E3E;font-weight:700;white-space:nowrap">~ ${endDate} 완료</span>`
+                  : `<span style="font-size:11px;color:#8A5410;font-weight:700;white-space:nowrap">진행중</span>`)
+              : (done
+                  ? `<span style="font-size:11px;color:#2A5E3E;font-weight:700;white-space:nowrap">~ ${endDate} 완료</span>`
+                  : `<span style="font-size:11px;color:var(--text2);white-space:nowrap">~ ${endDate}</span>`);
 
             const endDateBtn = isTextbook
               ? `<button class="btn btn-ghost btn-sm" style="padding:2px 8px;font-size:10px"
@@ -2775,7 +2778,7 @@ function renderAssignPage() {
                 a.test    ? `테스트 ${a.test}점${a.testType ? ' · '+a.testType : ''}` : '',
               ].filter(Boolean).join(' · ');
               extraChips = extraChips
-                ? `<span style="font-size:11px;color:var(--text3);white-space:nowrap">${extraChips}</span>`
+                ? `<span style="font-size:11px;color:var(--text2);white-space:nowrap">${extraChips}</span>`
                 : '';
             }
 
