@@ -450,7 +450,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 <header class="app-header">
   <span class="hdr-logo">🏫</span>
   <span class="hdr-title">학원 학습 관리 시스템</span>
-  <span class="hdr-badge">v1.4</span>
+  <span class="hdr-badge">v1.5</span>
   <div class="hdr-right">
     <span style="font-size:10px;color:var(--sb-text2)">자동저장</span>
     <span class="hdr-save-status saved" id="save-status">● 저장됨</span>
@@ -481,7 +481,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
       <span class="sb-item-icon">📋</span>수업 요약
     </div>
     <div class="sb-item" onclick="showPage('stuSummary')" id="nav-stuSummary">
-      <span class="sb-item-icon">🧑‍🎓</span>학생 요약
+      <span class="sb-item-icon">🧑‍🎓</span>학생요약/과제요약
     </div>
     <div class="sb-item" onclick="showPage('status')" id="nav-status">
       <span class="sb-item-icon">📊</span>반별학습현황
@@ -2891,7 +2891,6 @@ function renderAssignPage() {
           <span class="card-title">${cls.name}</span>
           <span class="badge b-gray">${students.length}명</span>
           <button class="btn btn-ghost btn-sm" style="margin-left:auto;color:var(--text2)" onclick="collapseAllInClass('${cls.id}')">▲ 전체 닫기</button>
-          <button class="btn btn-ghost btn-sm" style="color:var(--blue)" onclick="openAssignSummaryModal('${cls.id}')">📋 과제 요약</button>
           <button class="btn btn-success btn-sm" onclick="openAddAssignModal('${cls.id}')">＋ 과제 추가</button>
         </div>
         <div style="padding:0">${studentsHTML}</div>
@@ -2904,7 +2903,6 @@ function renderAssignPage() {
         <button class="btn btn-sm ${_assignViewMode==='student'?'btn-primary':'btn-ghost'}" onclick="setAssignViewMode('student')">학생별 보기</button>
         <button class="btn btn-sm ${_assignViewMode==='type'?'btn-primary':'btn-ghost'}"   onclick="setAssignViewMode('type')">유형별 보기</button>
       </div>
-      <button class="btn btn-ghost btn-sm" style="color:var(--blue)" onclick="openAllAssignSummaryModal()">📋 유형별 교재 리스트 요약</button>
     </div>`;
 
   const mainContent = _assignViewMode === 'student' ? `
@@ -4779,7 +4777,33 @@ function renderClassSummaryPage() {
   }
 }
 // ── 학생 요약 페이지 ────────────────────────────────────────
+// ── 학생요약/과제요약 통합 페이지 ─────────────────────────────
+let _stuSummaryViewMode = 'student'; // 'student' | 'assign'
+
+function setStuSummaryViewMode(mode) {
+  _stuSummaryViewMode = mode;
+  showPage('stuSummary');
+}
+
 function renderStudentSummaryPage() {
+  const toggleHTML = `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+      <div style="display:flex;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:3px;gap:3px">
+        <button class="btn btn-sm ${_stuSummaryViewMode==='student'?'btn-primary':'btn-ghost'}" onclick="setStuSummaryViewMode('student')">학생요약</button>
+        <button class="btn btn-sm ${_stuSummaryViewMode==='assign'?'btn-primary':'btn-ghost'}"   onclick="setStuSummaryViewMode('assign')">과제요약</button>
+      </div>
+      ${_stuSummaryViewMode==='assign' ? `<button class="btn btn-ghost btn-sm" style="color:var(--blue)" onclick="copyAssignSummary()">📋 텍스트 복사</button>` : ''}
+    </div>`;
+
+  const body = _stuSummaryViewMode === 'assign'
+    ? renderAssignSummaryBody()
+    : renderStudentSummaryBody();
+
+  return toggleHTML + body;
+}
+
+// 학생요약 (기존 renderStudentSummaryPage 로직)
+function renderStudentSummaryBody() {
   try {
   const today   = formatDate(new Date());
   const T_ORDER = ['SV','HV','MAIN','SUB'];
@@ -5206,6 +5230,33 @@ function copyAssignSummary() {
     .catch(() => toast('복사에 실패했습니다.', 'error'));
 }
 
+
+// 과제요약 (전체 반, 유형별 교재 리스트)
+function renderAssignSummaryBody() {
+  try {
+    let text = '';
+    DB.classes.forEach(cls => {
+      text += `━━━ ${cls.name} ━━━\n` + buildClassAssignSummaryText(cls.id);
+    });
+    _assignSummaryText = text.trim() || '진행중인 과제가 없습니다.';
+
+    return `
+      <div class="page-header">
+        <div class="page-title">과제 요약</div>
+        <div class="page-sub">전체 반 · 유형별 교재 리스트 (수업보카→홈보카→주교재→부교재)</div>
+      </div>
+      <div class="card" style="padding:16px 18px">
+        <div style="font-size:13px;line-height:1.9;white-space:pre-wrap;
+          font-family:'Noto Sans KR',monospace">${tabsToDisplaySpacing(_assignSummaryText).replace(/</g,'&lt;')}</div>
+      </div>`;
+  } catch(e) {
+    console.error('[과제요약] 오류:', e);
+    return `<div class="page-header"><div class="page-title">과제 요약</div></div>
+      <div class="empty-state"><div class="empty-icon">⚠️</div>
+      <div class="empty-title">데이터를 불러오는 중입니다</div>
+      <div class="empty-sub">잠시 후 다시 클릭해 보세요</div></div>`;
+  }
+}
 
 function showLibTab(type, btn) {
   ['SV','HV','MAIN','SUB'].forEach(t => {
