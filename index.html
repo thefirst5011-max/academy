@@ -481,7 +481,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   <button class="hdr-hamburger" onclick="toggleSidebar()" aria-label="메뉴 열기">☰</button>
   <span class="hdr-logo">🏫</span>
   <span class="hdr-title">학원 학습 관리 시스템</span>
-  <span class="hdr-badge">v2.6</span>
+  <span class="hdr-badge">v3.0</span>
   <div class="hdr-right">
     <span style="font-size:10px;color:var(--sb-text2)">자동저장</span>
     <span class="hdr-save-status saved" id="save-status">● 저장됨</span>
@@ -2751,12 +2751,12 @@ function renderAssignPage() {
               ? (a.sets ? getLastStudyDate(a.startDate, a.sets, a.type==='SV' ? (a.studyDays||null) : null, a.pausePeriods||null) : '—')
               : (a.endDate || null);
 
-            const chipStart = `<span style="background:#F0EEE8;color:#5A5955;font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px">${a.startDate} 시작</span>`;
+            const chipStart = `<span style="font-size:11px;color:var(--text3);white-space:nowrap">${a.startDate} 시작</span>`;
             const chipEnd = isTextbook
               ? (endDate
-                  ? `<span style="background:#D6EEE0;color:#3E7A5A;font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px">~ ${endDate} 완료</span>`
-                  : `<span style="background:#FEF5E7;color:#8F5409;font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px">진행중</span>`)
-              : `<span style="background:#F0EEE8;color:#5A5955;font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px">~ ${endDate}</span>`;
+                  ? `<span style="font-size:11px;color:#3E7A5A;font-weight:700;white-space:nowrap">~ ${endDate} 완료</span>`
+                  : `<span style="font-size:11px;color:#A86820;font-weight:700;white-space:nowrap">진행중</span>`)
+              : `<span style="font-size:11px;color:var(--text3);white-space:nowrap">~ ${endDate}</span>`;
 
             const endDateBtn = isTextbook
               ? `<button class="btn btn-ghost btn-sm" style="padding:2px 8px;font-size:10px"
@@ -2768,12 +2768,15 @@ function renderAssignPage() {
             let extraChips = '';
             if (isVoca) {
               extraChips = [
-                a.sets    ? `<span style="background:#EEF0FF;color:#3B3FA0;font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px">${a.sets}세트</span>` : '',
-                a.perSet  ? `<span style="background:#E8D890;color:#A86820;font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px">1set ${a.perSet}</span>` : '',
-                a.memorize? `<span style="background:#D6EEE0;color:#3E7A5A;font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px">암기 ${a.memorize}</span>` : '',
-                a.recall  ? `<span style="background:#E8D890;color:#A86820;font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px">리콜 ${a.recall}</span>` : '',
-                a.test    ? `<span style="background:#FCF0EE;color:#3A5A9A;font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px">테스트 ${a.test}점${a.testType ? ' · '+a.testType : ''}</span>` : '',
-              ].filter(Boolean).join('');
+                a.sets    ? `${a.sets}세트` : '',
+                a.perSet  ? `1set ${a.perSet}` : '',
+                a.memorize? `암기 ${a.memorize}` : '',
+                a.recall  ? `리콜 ${a.recall}` : '',
+                a.test    ? `테스트 ${a.test}점${a.testType ? ' · '+a.testType : ''}` : '',
+              ].filter(Boolean).join(' · ');
+              extraChips = extraChips
+                ? `<span style="font-size:11px;color:var(--text3);white-space:nowrap">${extraChips}</span>`
+                : '';
             }
 
             // 일시정지 기간 표시 칩 (시험기간 등)
@@ -4726,7 +4729,7 @@ function renderClassSummaryPage() {
       students.forEach(stu => {
         const a = DB.assignments.find(x => x.studentId === stu.id && x.type === type && isActive(x));
         if (!a) return;
-        const sigKey = [a.book, a.startDate, a.sets||'', a.perSet||'', a.memorize||'', a.recall||'', a.test||'', a.testType||''].join('|');
+        const sigKey = [a.book, a.startDate, a.sets||'', a.perSet||'', a.memorize||'', a.recall||'', a.test||'', a.testType||'', JSON.stringify(a.pausePeriods||[])].join('|');
         if (!groups[sigKey]) {
           groups[sigKey] = {
             book: a.book, startDate: a.startDate, end: endDateOf(a),
@@ -4841,11 +4844,11 @@ function renderClassSummaryPage() {
         <thead>
           <tr>
             <th class="sum-th" style="width:64px">반</th>
-            <th class="sum-th" style="width:100px">유형</th>
-            <th class="sum-th">교재명</th>
+            <th class="sum-th" style="width:90px">유형</th>
+            <th class="sum-th" style="width:180px">교재명</th>
             <th class="sum-th">대상</th>
-            <th class="sum-th" style="width:150px">기간</th>
-            <th class="sum-th" style="width:200px">조건</th>
+            <th class="sum-th" style="width:140px">기간</th>
+            <th class="sum-th" style="width:180px">조건</th>
           </tr>
         </thead>
         <tbody>${rowsHTML}</tbody>
@@ -5023,8 +5026,8 @@ function renderStudentSummaryBody() {
           <tr>
             <th class="sum-th" style="width:80px">학생</th>
             <th class="sum-th" style="width:60px">반</th>
-            <th class="sum-th" style="width:100px">유형</th>
-            <th class="sum-th">교재명</th>
+            <th class="sum-th" style="width:90px">유형</th>
+            <th class="sum-th" style="width:180px">교재명</th>
             <th class="sum-th" style="width:140px">진행률</th>
             <th class="sum-th" style="width:170px">메모</th>
           </tr>
@@ -5217,7 +5220,7 @@ function buildAssignSummaryTextCore(classIds) {
     students.forEach(stu => {
       const a = DB.assignments.find(x => x.studentId === stu.id && x.type === type && isActive(x));
       if (!a) return;
-      const sigKey = [a.book, a.startDate, a.sets||'', a.perSet||'', a.memorize||'', a.recall||'', a.test||'', a.testType||''].join('|');
+      const sigKey = [a.book, a.startDate, a.sets||'', a.perSet||'', a.memorize||'', a.recall||'', a.test||'', a.testType||'', JSON.stringify(a.pausePeriods||[])].join('|');
       if (!groups[sigKey]) {
         groups[sigKey] = {
           book: a.book, startDate: a.startDate, end: endDateOf(a),
@@ -5351,6 +5354,16 @@ function renderAssignSummaryBody() {
     function condText(row) {
       if (!row.isVoca) return '';
       const parts = [];
+      if (row.sets)     parts.push(`<strong>${row.sets}세트</strong>`);
+      if (row.perSet)   parts.push(`1set ${row.perSet}`);
+      if (row.memorize) parts.push(`암기${row.memorize}`);
+      if (row.recall)   parts.push(`리콜${row.recall}`);
+      if (row.test)     parts.push(`${row.testType||'테스트'} ${row.test}점`);
+      return parts.join(' · ');
+    }
+    function condTextPlain(row) {
+      if (!row.isVoca) return '';
+      const parts = [];
       if (row.sets)     parts.push(`${row.sets}세트`);
       if (row.perSet)   parts.push(`1set ${row.perSet}`);
       if (row.memorize) parts.push(`암기${row.memorize}`);
@@ -5376,7 +5389,7 @@ function renderAssignSummaryBody() {
       DB.students.forEach(stu => {
         const a = DB.assignments.find(x => x.studentId === stu.id && x.type === type && isActive(x));
         if (!a) return;
-        const sigKey = [a.book, a.startDate, a.sets||'', a.perSet||'', a.memorize||'', a.recall||'', a.test||'', a.testType||'', stu.classId].join('|');
+        const sigKey = [a.book, a.startDate, a.sets||'', a.perSet||'', a.memorize||'', a.recall||'', a.test||'', a.testType||'', stu.classId, JSON.stringify(a.pausePeriods||[])].join('|');
         if (!groups[sigKey]) {
           groups[sigKey] = {
             book: a.book, startDate: a.startDate, end: endDateOf(a),
@@ -5433,7 +5446,8 @@ function renderAssignSummaryBody() {
         const period = row.end
           ? `(${shortDate(row.startDate)}~${shortDate(row.end)})`
           : `(${shortDate(row.startDate)}~)`;
-        const cond = condText(row);
+        const cond     = condText(row);
+        const condPlain = condTextPlain(row);
 
         // 반 이름 목록 (중복 제거)
         const clsIdsInGroup = [...new Set(row.entries.map(e => e.clsId))];
@@ -5478,7 +5492,7 @@ function renderAssignSummaryBody() {
             <td class="sum-td${lastType}${bookBorder}" style="white-space:nowrap;font-size:12px;color:var(--text2)">${clsNamesStr}</td>
             <td class="sum-td sum-target-td${lastType}${bookBorder}">${targetHTML}</td>
             <td class="sum-td${lastType}${bookBorder}" style="white-space:nowrap;color:var(--text3);font-size:11px">
-              <span class="${periodClass.trim()}">${period}</span>
+              <span class="${periodClass.trim()}" style="font-weight:700">${period}</span>
             </td>
             <td class="sum-td${lastType}${bookBorder}" style="white-space:nowrap;color:var(--text3);font-size:11px">${cond}</td>
           </tr>`;
@@ -5486,7 +5500,7 @@ function renderAssignSummaryBody() {
         // 복사용 텍스트 (탭 구분)
         let namesStr = names.join(' ');
         if (isAllOneClass) namesStr += ' (전부표시)';
-        copyText += [isFirstOfBook ? row.book : '', clsNamesStr, namesStr, period, cond].join('\t') + '\n';
+        copyText += [isFirstOfBook ? row.book : '', clsNamesStr, namesStr, period, condPlain].join('\t') + '\n';
       });
       copyText += '\n';
     });
@@ -5502,12 +5516,12 @@ function renderAssignSummaryBody() {
         <table class="sum-table">
           <thead>
             <tr>
-              <th class="sum-th" style="width:100px">유형</th>
-              <th class="sum-th">교재명</th>
-              <th class="sum-th" style="width:80px">반</th>
+              <th class="sum-th" style="width:90px">유형</th>
+              <th class="sum-th" style="width:180px">교재명</th>
+              <th class="sum-th" style="width:64px">반</th>
               <th class="sum-th">대상</th>
-              <th class="sum-th" style="width:150px">기간</th>
-              <th class="sum-th" style="width:200px">조건</th>
+              <th class="sum-th" style="width:140px">기간</th>
+              <th class="sum-th" style="width:180px">조건</th>
             </tr>
           </thead>
           <tbody>${rowsHTML}</tbody>
