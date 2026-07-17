@@ -481,7 +481,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   <button class="hdr-hamburger" onclick="toggleSidebar()" aria-label="메뉴 열기">☰</button>
   <span class="hdr-logo">🏫</span>
   <span class="hdr-title">학원 학습 관리 시스템</span>
-  <span class="hdr-badge">v2.3</span>
+  <span class="hdr-badge">v2.4</span>
   <div class="hdr-right">
     <span style="font-size:10px;color:var(--sb-text2)">자동저장</span>
     <span class="hdr-save-status saved" id="save-status">● 저장됨</span>
@@ -3576,14 +3576,19 @@ function renderStudentDetailPage() {
         const dotC  = done ? '#3D9A1A' : '#2B7FD4';
         const dotSh = done ? '' : 'box-shadow:0 0 0 3px rgba(43,127,212,.2)';
 
-        let chips = '', progHTML = '';
+        let condParts = [];
         if (isVoca) {
           const tot = a.sets || 0;
-          if (tot)        chips += `<span class="chip-sm">${tot}세트</span>`;
-          if (a.perSet)   chips += `<span class="chip-sm">1set ${a.perSet}</span>`;
-          if (a.memorize) chips += `<span class="chip-sm">암기 ${a.memorize}</span>`;
-          if (a.recall)   chips += `<span class="chip-sm">리콜 ${a.recall}</span>`;
-          if (a.test)     chips += `<span class="chip-sm">테스트 ${a.test}점${a.testType?' · '+a.testType:''}</span>`;
+          if (tot)        condParts.push(`${tot}세트`);
+          if (a.perSet)   condParts.push(`1set ${a.perSet}`);
+          if (a.memorize) condParts.push(`암기 ${a.memorize}`);
+          if (a.recall)   condParts.push(`리콜 ${a.recall}`);
+          if (a.test)     condParts.push(`테스트 ${a.test}점${a.testType?' · '+a.testType:''}`);
+        }
+        const condText = condParts.join(' · ');
+        let progHTML = '';
+        if (isVoca) {
+          const tot = a.sets || 0;
           if (!done && tot > 0) {
             const allD = getStudyDates(a.startDate, tot, a.type==='SV'?(a.studyDays||null):null, a.pausePeriods||null);
             const ds   = allD.filter(d => d <= today).length;
@@ -3608,18 +3613,21 @@ function renderStudentDetailPage() {
         }
 
         const badge = done
-          ? `<span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:3px;background:#B8DCC4;color:#3E7A5A;border:1px solid #A0C8A8">완료 ✓</span>`
-          : `<span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:3px;background:#A86820;color:#fff">진행중</span>`;
+          ? `<span style="font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;background:#B8DCC4;color:#3E7A5A;border:1px solid #A0C8A8">완료✓</span>`
+          : `<span style="font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;background:#A86820;color:#fff">진행중</span>`;
 
         return `
           <div style="padding:8px 11px;margin:3px;border:${done?'1px solid #ECEAE6':'1px solid #E2DFD8'};border-radius:7px;background:${done?'#FAFAF8':'#FFFFFF'}">
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
               <div style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${dotC};${dotSh}"></div>
               <span style="font-size:12px;font-weight:800;color:${done?'var(--text2)':'var(--text)'};white-space:nowrap">${a.book}</span>
-              <span style="font-size:10px;color:var(--text3);white-space:nowrap">${dateRange}</span>
               ${badge}
             </div>
-            ${chips ? `<div style="display:flex;gap:3px;flex-wrap:wrap;margin-top:4px;padding-left:14px">${chips}</div>` : ''}
+            <div style="padding-left:14px;margin-top:3px;display:flex;flex-wrap:wrap;gap:3px 8px">
+              <span style="font-size:10px;color:var(--text3);white-space:nowrap">${dateRange}</span>
+              ${condText ? `<span style="font-size:10px;color:var(--text3);white-space:nowrap">${condText}</span>` : ''}
+            </div>
+            ${progHTML ? `<div style="padding-left:14px">${progHTML}</div>` : ''}
           </div>`;
       }).join('');
 
