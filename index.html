@@ -433,6 +433,10 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .pivot-table th.pt-r1-fixed{position:sticky;left:0;top:0;z-index:6;background:#F8F7F3;min-width:54px;text-align:center;border-right:2px solid var(--border2);border-bottom:2px solid var(--border2);font-size:11px;font-weight:700;color:var(--text3)}
 .pivot-table th.pt-r2-fixed{position:sticky;left:0;z-index:5;top:40px;background:#F8F7F3;min-width:54px;text-align:center;border-right:2px solid var(--border2);border-bottom:2px solid var(--border2)}
 .pivot-table th.pt-stu-name{position:sticky;top:0;z-index:3;font-size:14px;font-weight:800;color:var(--text);border-left:2px solid var(--border2);border-bottom:1px solid var(--border2);min-width:160px;padding:9px 14px}
+/* 교재학습이력 컬럼은 좁게 — 화면에 더 많이 보이도록 */
+.pivot-table th.tb-stu-col{min-width:110px}
+.pivot-table th.pt-stu-name.tb-stu-col{min-width:220px}
+.pivot-table td.tb-stu-col{min-width:110px;padding:7px 9px}
 .pivot-table th.pt-stu-type{position:sticky;top:40px;z-index:3;min-width:150px;font-size:11px;font-weight:700;border-bottom:2px solid var(--border2);padding:6px 12px}
 .pivot-table td{padding:9px 11px;border:1px solid #E4E1DA;border-radius:7px;text-align:left;min-width:150px;font-size:12px;vertical-align:middle;background:#FFFFFF}
 .pivot-table td.pt-num{position:sticky;left:0;background:#F8F7F3;z-index:2;border:1px solid var(--border2);border-radius:7px;font-size:12px;color:var(--text2);font-weight:700;padding:10px 10px;text-align:center;min-width:54px}
@@ -484,7 +488,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   <button class="hdr-hamburger" onclick="toggleSidebar()" aria-label="메뉴 열기">☰</button>
   <span class="hdr-logo">🏫</span>
   <span class="hdr-title">학원 학습 관리 시스템</span>
-  <span class="hdr-badge">v4.1</span>
+  <span class="hdr-badge">v4.3</span>
   <div class="hdr-right">
     <span style="font-size:10px;color:var(--sb-text2)">자동저장</span>
     <span class="hdr-save-status saved" id="save-status">● 저장됨</span>
@@ -4333,7 +4337,8 @@ function renderVocaPage() {
       const bd        = done ? '1px solid #ECEAE6' : '1px solid #E2DFD8';
       const dotBg     = done ? '#C8C8C6' : typeColor;
       const bookColor = done ? 'var(--text2)' : 'var(--text)';
-      const condColor = done ? 'var(--text3)' : 'var(--text2)';
+      const condColor = done ? 'var(--text3)' : 'var(--text)';
+      const condWeight = done ? 400 : 700;
 
       const condParts = [
         a.perSet   ? `1set ${a.perSet}` : '',
@@ -4347,7 +4352,7 @@ function renderVocaPage() {
           <span style="width:10px;height:10px;border-radius:50%;flex-shrink:0;margin-top:2px;background:${dotBg};border:2px solid rgba(255,255,255,0.9);box-shadow:0 0 0 1.5px ${dotBg}"></span>
           <div style="min-width:0">
             <div style="font-size:12px;font-weight:500;color:${bookColor};white-space:nowrap">${a.book}</div>
-            ${condParts ? `<div style="font-size:11px;color:${condColor};white-space:nowrap;margin-top:2px">${condParts}</div>` : ''}
+            ${condParts ? `<div style="font-size:11px;color:${condColor};font-weight:${condWeight};white-space:nowrap;margin-top:2px">${condParts}</div>` : ''}
           </div>
         </div>
       </td>`;
@@ -4427,9 +4432,20 @@ function filterVocaTable(query) {
 // ══════════════════════════════════════════════════════════
 function renderTextbookPage() {
   const classTabsHTML = `
-    <div class="tab-bar">
-      <button class="tab-btn ${!currentClassFilter?'active':''}" onclick="currentClassFilter=null;showPage('textbook')">전체</button>
-      ${DB.classes.map(cls=>`<button class="tab-btn ${currentClassFilter===cls.id?'active':''}" onclick="showPage('textbook','${cls.id}')">${cls.name}</button>`).join('')}
+    <div class="tab-bar" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+      <div style="display:flex;flex-wrap:wrap">
+        <button class="tab-btn ${!currentClassFilter?'active':''}" onclick="currentClassFilter=null;showPage('textbook')">전체</button>
+        ${DB.classes.map(cls=>`<button class="tab-btn ${currentClassFilter===cls.id?'active':''}" onclick="showPage('textbook','${cls.id}')">${cls.name}</button>`).join('')}
+      </div>
+      <div style="position:relative;display:flex;align-items:center;gap:8px;flex-shrink:0">
+        <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text3);font-size:13px;pointer-events:none">🔍</span>
+        <input id="tb-search-input" type="text" class="form-input"
+          placeholder="학생 이름 검색..."
+          style="padding-left:32px;width:200px;height:32px;font-size:12px"
+          oninput="filterTbTable(this.value)"
+          oncompositionend="filterTbTable(this.value)">
+        <span id="tb-search-count" style="font-size:11px;color:var(--text3);white-space:nowrap"></span>
+      </div>
     </div>`;
 
   const showClasses = currentClassFilter
@@ -4440,18 +4456,6 @@ function renderTextbookPage() {
     <div class="page-header"><div class="page-title">교재학습이력</div></div>
     ${classTabsHTML}
     <div class="empty-state"><div class="empty-title">반이 없습니다</div></div>`;
-
-  // ── 검색바
-  const searchBar = `
-    <div style="position:relative;margin-bottom:14px;display:flex;align-items:center;gap:10px">
-      <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text3);font-size:13px;pointer-events:none">🔍</span>
-      <input id="tb-search-input" type="text" class="form-input"
-        placeholder="학생 이름 검색..."
-        style="padding-left:32px;max-width:260px;height:36px"
-        oninput="filterTbTable(this.value)"
-        oncompositionend="filterTbTable(this.value)">
-      <span id="tb-search-count" style="font-size:12px;color:var(--text3)"></span>
-    </div>`;
 
   const tableHTML = showClasses.map((cls) => {
     const realIdx = DB.classes.findIndex(c=>c.id===cls.id);
@@ -4500,11 +4504,11 @@ function renderTextbookPage() {
         ? `<span style="font-size:10px;color:${done?'#AAAAAA':'var(--text3)'};margin-right:4px">${a.startDate}</span>`
         : '';
 
-      return `<td class="${cellClass}" ${colAttr} style="background:${bg};border:${bd};border-radius:7px;padding:8px 11px;vertical-align:middle;min-width:0">
-        <div style="display:flex;align-items:flex-start;gap:7px">
-          <span style="width:10px;height:10px;border-radius:50%;flex-shrink:0;margin-top:2px;background:${dotBg};border:2px solid rgba(255,255,255,0.9);box-shadow:0 0 0 1.5px ${dotBg}"></span>
+      return `<td class="${cellClass}" ${colAttr} style="background:${bg};border:${bd};border-radius:7px;padding:6px 9px;vertical-align:middle;min-width:0">
+        <div style="display:flex;align-items:flex-start;gap:6px">
+          <span style="width:9px;height:9px;border-radius:50%;flex-shrink:0;margin-top:2px;background:${dotBg};border:2px solid rgba(255,255,255,0.9);box-shadow:0 0 0 1.5px ${dotBg}"></span>
           <div style="min-width:0">
-            <div style="font-size:12px;font-weight:500;color:${bookColor};white-space:nowrap;margin-bottom:3px">${a.book}</div>
+            <div style="font-size:11px;font-weight:500;color:${bookColor};white-space:nowrap;margin-bottom:2px">${a.book}</div>
             <div style="display:flex;align-items:center;flex-wrap:wrap;gap:3px">${dateText}${statusBadge}</div>
           </div>
         </div>
@@ -4541,7 +4545,6 @@ function renderTextbookPage() {
       <div class="page-sub">학생별 주교재·부교재 이력 — 교재명·시작일·수업수</div>
     </div>
     ${classTabsHTML}
-    ${searchBar}
     <div id="tb-table-wrap">
       ${tableHTML || '<div class="empty-state"><div class="empty-title">데이터가 없습니다</div></div>'}
     </div>`;
