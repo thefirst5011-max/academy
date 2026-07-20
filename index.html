@@ -484,7 +484,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   <button class="hdr-hamburger" onclick="toggleSidebar()" aria-label="메뉴 열기">☰</button>
   <span class="hdr-logo">🏫</span>
   <span class="hdr-title">학원 학습 관리 시스템</span>
-  <span class="hdr-badge">v4.0</span>
+  <span class="hdr-badge">v4.1</span>
   <div class="hdr-right">
     <span style="font-size:10px;color:var(--sb-text2)">자동저장</span>
     <span class="hdr-save-status saved" id="save-status">● 저장됨</span>
@@ -4333,25 +4333,21 @@ function renderVocaPage() {
       const bd        = done ? '1px solid #ECEAE6' : '1px solid #E2DFD8';
       const dotBg     = done ? '#C8C8C6' : typeColor;
       const bookColor = done ? 'var(--text2)' : 'var(--text)';
+      const condColor = done ? 'var(--text3)' : 'var(--text2)';
 
-      const perSetChip = a.perSet
-        ? `<span style="background:${done?'#ECECEA':isSV?'#C8D4F0':'#E8D890'};color:${done?'#6A6A68':typeColor};font-size:10px;font-weight:700;padding:1px 6px;border-radius:3px;white-space:nowrap;margin-left:4px">1set ${a.perSet}</span>`
-        : '';
-
-      const chips = [
-        a.memorize ? `<span style="background:${done?'#ECECEA':'#B8DCC4'};color:${done?'#6A6A68':'#3E7A5A'};font-size:10px;font-weight:700;padding:1px 6px;border-radius:3px;white-space:nowrap">암기 ${a.memorize}</span>` : '',
-        a.recall   ? `<span style="background:${done?'#ECECEA':'#E8D890'};color:${done?'#6A6A68':'#A86820'};font-size:10px;font-weight:700;padding:1px 6px;border-radius:3px;white-space:nowrap">리콜 ${a.recall}</span>` : '',
-        a.test     ? `<span style="background:${done?'#ECECEA':'#C8D4F0'};color:${done?'#6A6A68':'#3A5A9A'};font-size:10px;font-weight:700;padding:1px 6px;border-radius:3px;white-space:nowrap">테스트 ${a.test}점${a.testType?' · '+a.testType:''}</span>` : '',
-      ].filter(Boolean).join('');
+      const condParts = [
+        a.perSet   ? `1set ${a.perSet}` : '',
+        a.memorize ? `암기 ${a.memorize}` : '',
+        a.recall   ? `리콜 ${a.recall}` : '',
+        a.test     ? `테스트 ${a.test}점${a.testType?' · '+a.testType:''}` : '',
+      ].filter(Boolean).join(' · ');
 
       return `<td class="${cellClass}" ${colAttr} style="background:${bg};border:${bd};border-radius:7px;padding:8px 11px;vertical-align:middle;min-width:0">
         <div style="display:flex;align-items:flex-start;gap:7px">
           <span style="width:10px;height:10px;border-radius:50%;flex-shrink:0;margin-top:2px;background:${dotBg};border:2px solid rgba(255,255,255,0.9);box-shadow:0 0 0 1.5px ${dotBg}"></span>
           <div style="min-width:0">
-            <div style="display:flex;align-items:center;flex-wrap:wrap;gap:2px;margin-bottom:${chips?'4px':'0'}">
-              <span style="font-size:12px;font-weight:500;color:${bookColor};white-space:nowrap">${a.book}</span>${perSetChip}
-            </div>
-            ${chips ? `<div style="display:flex;flex-wrap:wrap;gap:3px">${chips}</div>` : ''}
+            <div style="font-size:12px;font-weight:500;color:${bookColor};white-space:nowrap">${a.book}</div>
+            ${condParts ? `<div style="font-size:11px;color:${condColor};white-space:nowrap;margin-top:2px">${condParts}</div>` : ''}
           </div>
         </div>
       </td>`;
