@@ -484,7 +484,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   <button class="hdr-hamburger" onclick="toggleSidebar()" aria-label="메뉴 열기">☰</button>
   <span class="hdr-logo">🏫</span>
   <span class="hdr-title">학원 학습 관리 시스템</span>
-  <span class="hdr-badge">v3.8</span>
+  <span class="hdr-badge">v3.9</span>
   <div class="hdr-right">
     <span style="font-size:10px;color:var(--sb-text2)">자동저장</span>
     <span class="hdr-save-status saved" id="save-status">● 저장됨</span>
@@ -5465,7 +5465,7 @@ function renderAssignSummaryBody() {
         const lastType = isLastRowOfType ? ' sum-cls-border' : '';
         // 다음 행이 다른 book이면(=이 book의 마지막 행) 중간 구분선 추가
         const isLastRowOfBook = (ri === sortedRows.length - 1) || (sortedRows[ri+1].book !== row.book);
-        const bookBorder = (isLastRowOfBook && !isLastRowOfType) ? ' sum-type-border' : '';
+        const bookBorder = (isLastRowOfBook && !isLastRowOfType) ? ' sum-cls-border' : '';
 
         const period = row.end
           ? `(${shortDate(row.startDate)}~${shortDate(row.end)})`
@@ -5501,7 +5501,7 @@ function renderAssignSummaryBody() {
         const isFirstOfBook = bookFirstFlag[row.book];
         let bookCellHTML = '';
         if (isFirstOfBook) {
-          bookCellHTML = `<td class="sum-td sum-book-td${lastType}" rowspan="${bookRowSpan[row.book]}">${row.book}</td>`;
+          bookCellHTML = `<td class="sum-td sum-book-td sum-cls-border" rowspan="${bookRowSpan[row.book]}">${row.book}</td>`;
           bookFirstFlag[row.book] = false;
         }
 
