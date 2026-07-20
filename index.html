@@ -488,7 +488,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   <button class="hdr-hamburger" onclick="toggleSidebar()" aria-label="메뉴 열기">☰</button>
   <span class="hdr-logo">🏫</span>
   <span class="hdr-title">학원 학습 관리 시스템</span>
-  <span class="hdr-badge">v4.4</span>
+  <span class="hdr-badge">v4.5</span>
   <div class="hdr-right">
     <span style="font-size:10px;color:var(--sb-text2)">자동저장</span>
     <span class="hdr-save-status saved" id="save-status">● 저장됨</span>
@@ -1747,6 +1747,20 @@ const BOOK_LIBRARY_DEFAULT = {
         '과거/과거분사1','과거/과거분사2',
         '(입문/테스트)천문장','(입문/숙제)천문장','(기본/테스트)천문장','(기본/숙제)천문장']
 };
+
+// ── 커리큘럼 순서(로드맵) 헬퍼 ────────────────────────────────
+// BOOK_LIBRARY_DEFAULT를 학습 순서(첨부 커리순서.xlsx 기준)로 그대로 사용
+function curriculumIndexOf(type, book) {
+  const list = BOOK_LIBRARY_DEFAULT[type] || [];
+  const norm = normalizeBook(book);
+  return list.findIndex(b => normalizeBook(b) === norm);
+}
+function nextCurriculumBook(type, book) {
+  const list = BOOK_LIBRARY_DEFAULT[type] || [];
+  const idx = curriculumIndexOf(type, book);
+  if (idx === -1 || idx === list.length - 1) return null;
+  return list[idx + 1];
+}
 
 // ══════════════════════════════════════════════════════════
 // 4. 네비게이션
@@ -3671,6 +3685,84 @@ function renderStudentDetailPage() {
         </div>
       </div>`;
 
+    // ── 커리큘럼 로드맵 (첨부 커리순서.xlsx 기준, A/B 통합) ───────
+    const ROADMAP_TYPES = [
+      {type:'SV',   label:'수업보카', color:'#3A5A9A'},
+      {type:'HV',   label:'홈보카',   color:'#A86820'},
+      {type:'MAIN', label:'주교재',   color:'#3E7A5A'},
+      {type:'SUB',  label:'부교재',   color:'#7A3020'},
+    ];
+
+    const roadmapSections = ROADMAP_TYPES.map(({type, label, color}) => {
+      const list = BOOK_LIBRARY_DEFAULT[type] || [];
+      if (!list.length) return '';
+
+      // 학생이 학습한(과제로 등록된 적 있는) 교재명 집합
+      const studiedSet = new Set(
+        assigns.filter(a => a.type === type).map(a => normalizeBook(a.book))
+      );
+      // 현재 진행중인 교재(가장 최근 시작일 기준)
+      const activeOnes = assigns.filter(a => a.type === type && !isAssignDone(a))
+        .sort((a,b) => (b.startDate||'').localeCompare(a.startDate||''));
+      const currentBook = activeOnes.length ? activeOnes[0].book : null;
+
+      const chipsHTML2 = list.map(book => {
+        const studied  = studiedSet.has(normalizeBook(book));
+        const isCurrent = currentBook && normalizeBook(currentBook) === normalizeBook(book);
+        const bg = isCurrent ? color : (studied ? '#F0E9D8' : 'var(--surface2)');
+        const fg = isCurrent ? '#fff' : (studied ? '#7A5A1A' : 'var(--text3)');
+        const bd2 = isCurrent ? color : (studied ? '#E0D0A0' : 'var(--border)');
+        const fw = isCurrent ? 800 : (studied ? 700 : 400);
+        return `<span style="display:inline-block;padding:3px 9px;border-radius:5px;font-size:11px;
+          font-weight:${fw};background:${bg};color:${fg};border:1px solid ${bd2};white-space:nowrap;margin:2px">
+          ${isCurrent ? '▶ ' : ''}${book}</span>`;
+      }).join('');
+
+      // 다음 추천 교재
+      let nextHTML = '';
+      if (currentBook) {
+        const next = nextCurriculumBook(type, currentBook);
+        if (next) {
+          const nextSafe = next.replace(/'/g, "\\'");
+          nextHTML = `
+            <div style="margin-top:8px;padding:8px 12px;background:#F0E9D8;border:1px solid #E0D0A0;border-radius:7px;
+              display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <span style="font-size:11px;color:#7A5A1A">다음 추천 교재:</span>
+              <span style="font-size:12px;font-weight:800;color:#5A4010">${next}</span>
+              <button class="btn btn-sm" style="margin-left:auto;background:${color};color:#fff;font-size:11px;padding:3px 10px"
+                onclick="openAddAssignModal('${stu.classId}','${stu.id}');setTimeout(()=>{
+                  const typeRadio=document.querySelector('input[name=&quot;assign-type&quot;][value=&quot;${type}&quot;]');
+                  if(typeRadio){typeRadio.checked=true;typeRadio.dispatchEvent(new Event('change'));}
+                  const bookInput=document.getElementById('assign-book');
+                  if(bookInput) bookInput.value='${nextSafe}';
+                },80)">+ 다음 교재 과제 추가</button>
+            </div>`;
+        } else {
+          nextHTML = `<div style="margin-top:8px;font-size:11px;color:var(--text3)">🎉 커리큘럼의 마지막 교재입니다</div>`;
+        }
+      }
+
+      return `
+        <div style="margin-bottom:${type==='SUB'?'0':'14px'}">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+            <span class="type-chip ${TYPE_CHIPS[type]}">${label}</span>
+            <span style="font-size:10px;color:var(--text3)">${studiedSet.size}/${list.length} 완료</span>
+          </div>
+          <div style="line-height:2.1">${chipsHTML2}</div>
+          ${nextHTML}
+        </div>`;
+    }).join('');
+
+    const roadmapCard = `
+      <div class="card" style="margin-bottom:12px;overflow:hidden">
+        <div class="card-header">
+          <span style="font-size:12px;font-weight:800;color:var(--text)">🗺️ 커리큘럼 로드맵</span>
+          <span style="font-size:11px;color:var(--text3);margin-left:6px">진한 색 = 학습한 교재, ▶ = 현재 진행중</span>
+        </div>
+        <div style="padding:14px 16px">${roadmapSections}</div>
+      </div>`;
+
+
     // ── 출결 요약 ─────────────────────────────────────────────
     const attendData  = DB.attendance || {};
     const absentDates = Object.entries(attendData)
@@ -3732,7 +3824,7 @@ function renderStudentDetailPage() {
         </div>
       </div>`;
 
-    detailHTML = profileCard + historyHTML + attendCard + planCard;
+    detailHTML = profileCard + historyHTML + roadmapCard + attendCard + planCard;
   }
 
   return `
