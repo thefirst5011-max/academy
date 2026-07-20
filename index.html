@@ -488,7 +488,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   <button class="hdr-hamburger" onclick="toggleSidebar()" aria-label="메뉴 열기">☰</button>
   <span class="hdr-logo">🏫</span>
   <span class="hdr-title">학원 학습 관리 시스템</span>
-  <span class="hdr-badge">v5.2</span>
+  <span class="hdr-badge">v5.3</span>
   <div class="hdr-right">
     <span style="font-size:10px;color:var(--sb-text2)">자동저장</span>
     <span class="hdr-save-status saved" id="save-status">● 저장됨</span>
@@ -6353,11 +6353,15 @@ function saveAssignConfirm() {
     }
   }
 
-  // 보카(SV/HV): 날짜 겹침 → 확인 후 겹치는 학생만 제외하고 진행
+  // 보카(SV/HV): 이름이 같거나 날짜가 겹치면 → 확인 후 해당 학생만 제외하고 진행
   if (isVoca) {
     const overlapNames = [];
     for (const studentId of selectedIds) {
       const existingList = DB.assignments.filter(a => a.studentId === studentId && a.type === type);
+
+      // ① 완전히 같은 교재명이 이미 있는지
+      const sameName = existingList.find(ex => normalizeBook(ex.book) === normalizeBook(book));
+      // ② 날짜 범위가 겹치는지 (이름 상관없이)
       const overlapping = existingList.find(ex => {
         const exCount = ex.sets || 0;
         return datesOverlap(
@@ -6365,19 +6369,23 @@ function saveAssignConfirm() {
           {startDate, count: newCount, studyDays: studyDays||null}
         );
       });
-      if (overlapping) {
+
+      const conflict = sameName || overlapping;
+      if (conflict) {
         const stu = getStudentById(studentId);
-        overlapNames.push(`${stu?.name||'?'} (기존: ${overlapping.book} ${overlapping.startDate} 시작)`);
+        const reason = sameName && overlapping ? '이름·날짜 모두 겹침'
+                     : sameName ? '이름 겹침' : '날짜 겹침';
+        overlapNames.push(`${stu?.name||'?'} — ${reason} (기존: ${conflict.book} ${conflict.startDate} 시작)`);
         excludeIds.add(studentId);
       }
     }
     if (overlapNames.length > 0) {
       const remain = selectedIds.length - overlapNames.length;
       const ok = confirm(
-        `날짜가 겹치는 학생:\n${overlapNames.join('\n')}\n\n` +
+        `이름 또는 날짜가 겹치는 학생:\n${overlapNames.join('\n')}\n\n` +
         (remain > 0
           ? `이 학생들을 제외하고 나머지 ${remain}명만 저장할까요?`
-          : `선택한 학생 전원이 날짜가 겹쳐 저장할 대상이 없습니다.`)
+          : `선택한 학생 전원이 겹쳐서 저장할 대상이 없습니다.`)
       );
       if (!ok || remain === 0) { toast('저장이 취소되었습니다.', 'warning'); return; }
     }
@@ -6630,20 +6638,23 @@ function saveEditAssign(bulkConfirmed) {
       studyDays = checked.length === 5 ? null : checked;
     }
 
-    // 문제1 해결: 겹침 체크 시 자기 자신 제외
+    // 문제1 해결: 겹침 체크 시 자기 자신 제외 (이름 또는 날짜 겹침 모두 체크)
     const newCount = sets;
     const existingList = DB.assignments.filter(x =>
       x.studentId === a.studentId && x.type === type && x.id !== _editingAssignId
     );
+    const sameName = existingList.find(ex => normalizeBook(ex.book) === normalizeBook(book));
     const overlapping = existingList.find(ex =>
       datesOverlap(
         {startDate: ex.startDate, count: ex.sets||0, studyDays: ex.studyDays||null, pausePeriods: ex.pausePeriods||null},
         {startDate, count: newCount, studyDays: studyDays||null}
       )
     );
-    if (overlapping) {
+    const conflict = sameName || overlapping;
+    if (conflict) {
       const stu = getStudentById(a.studentId);
-      toast(`날짜가 겹치는 과제가 있습니다: ${stu?.name||'?'} (기존: ${overlapping.book} ${overlapping.startDate} 시작)`, 'error');
+      const reason = sameName && overlapping ? '이름·날짜 모두 겹침' : sameName ? '이름 겹침' : '날짜 겹침';
+      toast(`${reason}: ${stu?.name||'?'} (기존: ${conflict.book} ${conflict.startDate} 시작)`, 'error');
       return;
     }
 
