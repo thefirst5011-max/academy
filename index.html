@@ -488,7 +488,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   <button class="hdr-hamburger" onclick="toggleSidebar()" aria-label="메뉴 열기">☰</button>
   <span class="hdr-logo">🏫</span>
   <span class="hdr-title">학원 학습 관리 시스템</span>
-  <span class="hdr-badge">v4.5</span>
+  <span class="hdr-badge">v4.6</span>
   <div class="hdr-right">
     <span style="font-size:10px;color:var(--sb-text2)">자동저장</span>
     <span class="hdr-save-status saved" id="save-status">● 저장됨</span>
@@ -3693,29 +3693,44 @@ function renderStudentDetailPage() {
       {type:'SUB',  label:'부교재',   color:'#7A3020'},
     ];
 
-    const roadmapSections = ROADMAP_TYPES.map(({type, label, color}) => {
+    const roadmapCols = ROADMAP_TYPES.map(({type, label, color}) => {
       const list = BOOK_LIBRARY_DEFAULT[type] || [];
-      if (!list.length) return '';
+      if (!list.length) return { label, color, type, rowsHTML: '', nextHTML: '', studiedCount: 0, total: 0 };
 
-      // 학생이 학습한(과제로 등록된 적 있는) 교재명 집합
-      const studiedSet = new Set(
-        assigns.filter(a => a.type === type).map(a => normalizeBook(a.book))
-      );
-      // 현재 진행중인 교재(가장 최근 시작일 기준)
+      // 학생이 학습한(과제로 등록된 적 있는) 교재명 집합 + 완료여부
+      const bookStatus = {}; // normalizedBook -> 'active' | 'done'
+      assigns.filter(a => a.type === type).forEach(a => {
+        const key = normalizeBook(a.book);
+        const st  = isAssignDone(a) ? 'done' : 'active';
+        // 이미 active로 표시돼 있으면 유지(진행중이 우선), 아니면 최신 상태로 갱신
+        if (bookStatus[key] !== 'active') bookStatus[key] = st;
+      });
+      const studiedCount = Object.keys(bookStatus).length;
+
       const activeOnes = assigns.filter(a => a.type === type && !isAssignDone(a))
         .sort((a,b) => (b.startDate||'').localeCompare(a.startDate||''));
       const currentBook = activeOnes.length ? activeOnes[0].book : null;
 
-      const chipsHTML2 = list.map(book => {
-        const studied  = studiedSet.has(normalizeBook(book));
-        const isCurrent = currentBook && normalizeBook(currentBook) === normalizeBook(book);
-        const bg = isCurrent ? color : (studied ? '#F0E9D8' : 'var(--surface2)');
-        const fg = isCurrent ? '#fff' : (studied ? '#7A5A1A' : 'var(--text3)');
-        const bd2 = isCurrent ? color : (studied ? '#E0D0A0' : 'var(--border)');
-        const fw = isCurrent ? 800 : (studied ? 700 : 400);
-        return `<span style="display:inline-block;padding:3px 9px;border-radius:5px;font-size:11px;
-          font-weight:${fw};background:${bg};color:${fg};border:1px solid ${bd2};white-space:nowrap;margin:2px">
-          ${isCurrent ? '▶ ' : ''}${book}</span>`;
+      const rowsHTML2 = list.map(book => {
+        const norm = normalizeBook(book);
+        const status = bookStatus[norm]; // 'active' | 'done' | undefined
+        const isCurrent = status === 'active';
+
+        let badge = '';
+        let bg = 'var(--surface)';
+        let fg = 'var(--text3)';
+        let fw = 400;
+        if (isCurrent) {
+          bg = color; fg = '#fff'; fw = 800;
+          badge = `<span style="font-size:9px;font-weight:800;padding:1px 6px;border-radius:3px;background:rgba(255,255,255,.25);margin-left:auto">진행중</span>`;
+        } else if (status === 'done') {
+          bg = '#F0E9D8'; fg = '#5A4010'; fw = 700;
+          badge = `<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:3px;background:#E0D0A0;color:#5A4010;margin-left:auto">완료</span>`;
+        }
+        return `<div style="display:flex;align-items:center;gap:6px;padding:4px 9px;border-radius:5px;
+          background:${bg};color:${fg};font-size:11px;font-weight:${fw};margin-bottom:2px">
+          <span style="white-space:nowrap">${book}</span>${badge}
+        </div>`;
       }).join('');
 
       // 다음 추천 교재
@@ -3725,41 +3740,42 @@ function renderStudentDetailPage() {
         if (next) {
           const nextSafe = next.replace(/'/g, "\\'");
           nextHTML = `
-            <div style="margin-top:8px;padding:8px 12px;background:#F0E9D8;border:1px solid #E0D0A0;border-radius:7px;
-              display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-              <span style="font-size:11px;color:#7A5A1A">다음 추천 교재:</span>
-              <span style="font-size:12px;font-weight:800;color:#5A4010">${next}</span>
-              <button class="btn btn-sm" style="margin-left:auto;background:${color};color:#fff;font-size:11px;padding:3px 10px"
+            <div style="margin-top:8px;padding:8px 10px;background:#F0E9D8;border:1px solid #E0D0A0;border-radius:7px">
+              <div style="font-size:10px;color:#7A5A1A;margin-bottom:3px">다음 추천</div>
+              <div style="font-size:12px;font-weight:800;color:#5A4010;margin-bottom:6px">${next}</div>
+              <button class="btn btn-sm" style="width:100%;background:${color};color:#fff;font-size:11px;padding:4px 8px"
                 onclick="openAddAssignModal('${stu.classId}','${stu.id}');setTimeout(()=>{
                   const typeRadio=document.querySelector('input[name=&quot;assign-type&quot;][value=&quot;${type}&quot;]');
                   if(typeRadio){typeRadio.checked=true;typeRadio.dispatchEvent(new Event('change'));}
                   const bookInput=document.getElementById('assign-book');
                   if(bookInput) bookInput.value='${nextSafe}';
-                },80)">+ 다음 교재 과제 추가</button>
+                },80)">+ 과제 추가</button>
             </div>`;
         } else {
-          nextHTML = `<div style="margin-top:8px;font-size:11px;color:var(--text3)">🎉 커리큘럼의 마지막 교재입니다</div>`;
+          nextHTML = `<div style="margin-top:8px;font-size:11px;color:var(--text3);text-align:center">🎉 마지막 교재</div>`;
         }
       }
 
-      return `
-        <div style="margin-bottom:${type==='SUB'?'0':'14px'}">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-            <span class="type-chip ${TYPE_CHIPS[type]}">${label}</span>
-            <span style="font-size:10px;color:var(--text3)">${studiedSet.size}/${list.length} 완료</span>
-          </div>
-          <div style="line-height:2.1">${chipsHTML2}</div>
-          ${nextHTML}
-        </div>`;
-    }).join('');
+      return { label, color, type, rowsHTML: rowsHTML2, nextHTML, studiedCount, total: list.length };
+    });
 
     const roadmapCard = `
       <div class="card" style="margin-bottom:12px;overflow:hidden">
         <div class="card-header">
           <span style="font-size:12px;font-weight:800;color:var(--text)">🗺️ 커리큘럼 로드맵</span>
-          <span style="font-size:11px;color:var(--text3);margin-left:6px">진한 색 = 학습한 교재, ▶ = 현재 진행중</span>
+          <span style="font-size:11px;color:var(--text3);margin-left:6px">교재별 학습 순서 · 완료/진행중 표시</span>
         </div>
-        <div style="padding:14px 16px">${roadmapSections}</div>
+        <div style="padding:14px 16px;display:grid;grid-template-columns:repeat(4,1fr);gap:12px;overflow-x:auto">
+          ${roadmapCols.map(col => `
+            <div style="min-width:150px">
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+                <span class="type-chip ${TYPE_CHIPS[col.type]}">${col.label}</span>
+              </div>
+              <div style="font-size:10px;color:var(--text3);margin-bottom:6px">${col.studiedCount}/${col.total} 학습</div>
+              <div style="max-height:280px;overflow-y:auto;padding-right:2px">${col.rowsHTML}</div>
+              ${col.nextHTML}
+            </div>`).join('')}
+        </div>
       </div>`;
 
 
