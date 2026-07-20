@@ -484,7 +484,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   <button class="hdr-hamburger" onclick="toggleSidebar()" aria-label="메뉴 열기">☰</button>
   <span class="hdr-logo">🏫</span>
   <span class="hdr-title">학원 학습 관리 시스템</span>
-  <span class="hdr-badge">v3.9</span>
+  <span class="hdr-badge">v4.0</span>
   <div class="hdr-right">
     <span style="font-size:10px;color:var(--sb-text2)">자동저장</span>
     <span class="hdr-save-status saved" id="save-status">● 저장됨</span>
@@ -4173,11 +4173,32 @@ function renderHistoryPage() {
 // ══════════════════════════════════════════════════════════
 // 9. 보카학습이력 페이지
 // ══════════════════════════════════════════════════════════
+// 보카학습이력 뷰 모드 상태
+let _vocaViewMode = 'student'; // 'student' | 'group'
+let _vocaExpandedGroups = new Set(); // 펼쳐진 그룹 key 목록
+
+function setVocaViewMode(mode) {
+  _vocaViewMode = mode;
+  _vocaExpandedGroups.clear();
+  showPage('voca');
+}
+function toggleVocaGroupExpand(key) {
+  if (_vocaExpandedGroups.has(key)) _vocaExpandedGroups.delete(key);
+  else _vocaExpandedGroups.add(key);
+  showPage('voca');
+}
+
 function renderVocaPage() {
   const classTabsHTML = `
     <div class="tab-bar">
       <button class="tab-btn ${!currentClassFilter?'active':''}" onclick="currentClassFilter=null;showPage('voca')">전체</button>
       ${DB.classes.map(cls=>`<button class="tab-btn ${currentClassFilter===cls.id?'active':''}" onclick="showPage('voca','${cls.id}')">${cls.name}</button>`).join('')}
+    </div>`;
+
+  const viewToggleHTML = `
+    <div style="display:flex;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:3px;gap:3px;margin-bottom:12px;width:fit-content">
+      <button class="btn btn-sm ${_vocaViewMode==='student'?'btn-primary':'btn-ghost'}" onclick="setVocaViewMode('student')">학생별 보기</button>
+      <button class="btn btn-sm ${_vocaViewMode==='group'?'btn-primary':'btn-ghost'}" onclick="setVocaViewMode('group')">그룹 보기</button>
     </div>`;
 
   const showClasses = currentClassFilter
@@ -4206,17 +4227,90 @@ function renderVocaPage() {
     const students = getStudentsByClass(cls.id);
     if (students.length === 0) return '';
 
-    const stuData = students.map(stu => ({
+    const stuDataRaw = students.map(stu => ({
       stu,
       svList: getAssignmentsByStudent(stu.id).filter(a=>a.type==='SV'),
       hvList: getAssignmentsByStudent(stu.id).filter(a=>a.type==='HV'),
     }));
+
+    // 학생의 전체 이력을 비교 가능한 시그니처 문자열로 변환 (완전 일치 판단용)
+    function stuSignature(d) {
+      const sig = (list) => list.map(a =>
+        [a.book, a.sets||'', a.perSet||'', a.memorize||'', a.recall||'', a.test||'', a.testType||'', a.startDate||'', a.endDate||''].join('/')
+      ).join(';;');
+      return sig(d.svList) + '||' + sig(d.hvList);
+    }
+
+    let stuData, groupMeta = null; // groupMeta: colIdx -> {isGroup, members:[names], groupKey}
+
+    if (_vocaViewMode === 'group') {
+      const groups = {}; // sig -> {members:[d,...], rep:d}
+      const order = [];
+      stuDataRaw.forEach(d => {
+        const sig = stuSignature(d);
+        if (!sig || sig === '||') { // 이력이 아예 없으면 그룹화하지 않고 개별 표시
+          const soloKey = 'solo_' + d.stu.id;
+          groups[soloKey] = { members: [d], rep: d };
+          order.push(soloKey);
+          return;
+        }
+        if (!groups[sig]) { groups[sig] = { members: [], rep: d }; order.push(sig); }
+        groups[sig].members.push(d);
+      });
+
+      groupMeta = [];
+      stuData = [];
+      order.forEach(key => {
+        const g = groups[key];
+        const isMultiGroup = g.members.length > 1;
+        const expandKey = `${cls.id}__${key}`;
+        if (isMultiGroup && !_vocaExpandedGroups.has(expandKey)) {
+          // 접힌 상태: 대표 1개 컬럼만 추가, 헤더에 전원 이름 표시
+          stuData.push(g.rep);
+          groupMeta.push({ isGroup: true, members: g.members.map(m=>m.stu.name), expandKey });
+        } else if (isMultiGroup) {
+          // 펼친 상태: 그룹 내 학생 전원을 개별 컬럼으로 표시
+          g.members.forEach((m, mi) => {
+            stuData.push(m);
+            groupMeta.push({ isGroup: false, isExpandedMember: true, expandKey, isFirstOfGroup: mi===0, groupSize: g.members.length });
+          });
+        } else {
+          stuData.push(g.rep);
+          groupMeta.push({ isGroup: false });
+        }
+      });
+    } else {
+      stuData = stuDataRaw;
+    }
+
     const maxRows = stuData.length === 0 ? 0 : Math.max(...stuData.map(d => Math.max(d.svList.length, d.hvList.length, 1)));
 
-    // 헤더 1행: 이력# | 학생명 colspan=2
+    // 헤더 1행: 이력# | 학생명 colspan=2 (그룹모드: 그룹은 전원 이름 나열 + 클릭으로 펼침/접힘)
     const thead1 = `<tr>
       <th class="pt-r1-fixed" rowspan="2" style="top:0">이력#</th>
-      ${stuData.map((d,i)=>`<th class="pt-stu-name voca-stu-col" data-stu-col="${i}" colspan="2">${d.stu.name}</th>`).join('')}
+      ${stuData.map((d,i)=>{
+        const meta = groupMeta ? groupMeta[i] : null;
+        if (meta && meta.isGroup) {
+          const names = meta.members.join(', ');
+          return `<th class="pt-stu-name voca-stu-col" data-stu-col="${i}" colspan="2"
+            style="cursor:pointer" onclick="toggleVocaGroupExpand('${meta.expandKey}')"
+            title="클릭하면 개별 학생으로 펼쳐집니다">
+            <div style="display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap">
+              <span style="font-size:12px;line-height:1.4">${names}</span>
+              <span class="badge b-gray" style="font-size:10px">${meta.members.length}명</span>
+              <span style="font-size:11px;color:var(--text3)">▼ 펼치기</span>
+            </div>
+          </th>`;
+        }
+        if (meta && meta.isExpandedMember && meta.isFirstOfGroup) {
+          return `<th class="pt-stu-name voca-stu-col" data-stu-col="${i}" colspan="2" style="position:relative">
+            <div>${d.stu.name}</div>
+            <button class="btn btn-ghost btn-sm" style="position:absolute;top:2px;right:4px;padding:1px 6px;font-size:10px"
+              onclick="event.stopPropagation();toggleVocaGroupExpand('${meta.expandKey}')" title="그룹으로 접기">▲ 접기</button>
+          </th>`;
+        }
+        return `<th class="pt-stu-name voca-stu-col" data-stu-col="${i}" colspan="2">${d.stu.name}</th>`;
+      }).join('')}
     </tr>`;
 
     // 헤더 2행: 수업V | 홈V
@@ -4293,6 +4387,7 @@ function renderVocaPage() {
       <div class="page-sub">학생별 수업V·홈V 이력 — 교재명 / 1set·암기·리콜·테스트 기준</div>
     </div>
     ${classTabsHTML}
+    ${viewToggleHTML}
     ${searchBar}
     <div id="voca-table-wrap">
       ${tableHTML || '<div class="empty-state"><div class="empty-title">데이터가 없습니다</div></div>'}
