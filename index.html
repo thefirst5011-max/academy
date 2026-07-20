@@ -484,7 +484,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   <button class="hdr-hamburger" onclick="toggleSidebar()" aria-label="메뉴 열기">☰</button>
   <span class="hdr-logo">🏫</span>
   <span class="hdr-title">학원 학습 관리 시스템</span>
-  <span class="hdr-badge">v3.3</span>
+  <span class="hdr-badge">v3.8</span>
   <div class="hdr-right">
     <span style="font-size:10px;color:var(--sb-text2)">자동저장</span>
     <span class="hdr-save-status saved" id="save-status">● 저장됨</span>
@@ -1580,6 +1580,17 @@ function formatDate(d) {
   const m = String(dt.getMonth()+1).padStart(2,'0');
   const dd = String(dt.getDate()).padStart(2,'0');
   return `${y}-${m}-${dd}`;
+}
+
+// 교재명 정규화: 앞뒤 공백, 연속 공백, 특수 대시 문자 등 눈에 안 보이는 차이를 통일
+// (같은 교재명인데 미세한 문자 차이로 과제요약 등에서 그룹이 갈라지는 것 방지)
+function normalizeBook(str) {
+  if (!str) return '';
+  return str
+    .trim()
+    .replace(/\s+/g, ' ')           // 연속 공백 → 1칸
+    .replace(/[\u2010-\u2015\uFF0D]/g, '-') // 여러 종류의 대시(－,‐,‑ 등) → 표준 하이픈
+    .replace(/[\u200B\u200C\u200D\uFEFF]/g, ''); // 보이지 않는 폭 0 문자 제거
 }
 
 function formatDateKo(d) {
@@ -2806,10 +2817,13 @@ function renderAssignPage() {
               const sameClassStudents = DB.students.filter(s => s.classId === a.classId && s.id !== a.studentId);
               const pauseCandidates = [];
               for (const s of sameClassStudents) {
-                const match = DB.assignments.find(x =>
+                const matches = DB.assignments.filter(x =>
                   x.studentId === s.id && x.type === a.type && x.book === a.book
                 );
-                if (match) pauseCandidates.push({ stu: s, assign: match });
+                if (matches.length === 0) continue;
+                const active = matches.find(x => !isAssignDone(x));
+                const match  = active || matches.slice().sort((x,y) => (y.startDate||'').localeCompare(x.startDate||''))[0];
+                pauseCandidates.push({ stu: s, assign: match });
               }
               if (pauseCandidates.length > 0) {
                 const chkItems = pauseCandidates.map(({ stu, assign: pa }) => {
@@ -4733,12 +4747,12 @@ function renderClassSummaryPage() {
       const groups = {};
       const order  = [];
       students.forEach(stu => {
-        const a = DB.assignments.find(x => x.studentId === stu.id && x.type === type && isActive(x));
-        if (!a) return;
-        const sigKey = [a.book, a.startDate, a.sets||'', a.perSet||'', a.memorize||'', a.recall||'', a.test||'', a.testType||'', JSON.stringify(a.pausePeriods||[])].join('|');
+        const stuAssigns = DB.assignments.filter(x => x.studentId === stu.id && x.type === type && isActive(x));
+        stuAssigns.forEach(a => {
+        const sigKey = [normalizeBook(a.book), a.startDate, a.sets||'', a.perSet||'', a.memorize||'', a.recall||'', a.test||'', a.testType||'', JSON.stringify(a.pausePeriods||[])].join('|');
         if (!groups[sigKey]) {
           groups[sigKey] = {
-            book: a.book, startDate: a.startDate, end: endDateOf(a),
+            book: normalizeBook(a.book), startDate: a.startDate, end: endDateOf(a),
             sets: a.sets, perSet: a.perSet, memorize: a.memorize,
             recall: a.recall, test: a.test, testType: a.testType,
             names: [],
@@ -4746,6 +4760,7 @@ function renderClassSummaryPage() {
           order.push(sigKey);
         }
         groups[sigKey].names.push(stu.name);
+        });
       });
       const rows = order.map(k => ({ type, isVoca, ...groups[k] }));
       return { type, rows };
@@ -5083,10 +5098,11 @@ function buildClassAssignSummaryHTML(classId) {
     // 이 유형에서 진행중인 과제를 교재명 기준으로 그룹핑
     const groups = {}; // book -> {ref, items:[{a,stu}]}
     students.forEach(stu => {
-      const a = DB.assignments.find(x => x.studentId === stu.id && x.type === type && isActive(x));
-      if (!a) return;
+      const stuAssigns = DB.assignments.filter(x => x.studentId === stu.id && x.type === type && isActive(x));
+      stuAssigns.forEach(a => {
       if (!groups[a.book]) groups[a.book] = { ref: a, items: [] };
       groups[a.book].items.push({ a, stu });
+      });
     });
 
     const bookNames = Object.keys(groups);
@@ -5224,12 +5240,12 @@ function buildAssignSummaryTextCore(classIds) {
     const order = [];  // sigKey 등장 순서 보존
 
     students.forEach(stu => {
-      const a = DB.assignments.find(x => x.studentId === stu.id && x.type === type && isActive(x));
-      if (!a) return;
-      const sigKey = [a.book, a.startDate, a.sets||'', a.perSet||'', a.memorize||'', a.recall||'', a.test||'', a.testType||'', JSON.stringify(a.pausePeriods||[])].join('|');
+      const stuAssigns = DB.assignments.filter(x => x.studentId === stu.id && x.type === type && isActive(x));
+      stuAssigns.forEach(a => {
+      const sigKey = [normalizeBook(a.book), a.startDate, a.sets||'', a.perSet||'', a.memorize||'', a.recall||'', a.test||'', a.testType||'', JSON.stringify(a.pausePeriods||[])].join('|');
       if (!groups[sigKey]) {
         groups[sigKey] = {
-          book: a.book, startDate: a.startDate, end: endDateOf(a),
+          book: normalizeBook(a.book), startDate: a.startDate, end: endDateOf(a),
           sets: a.sets, perSet: a.perSet, memorize: a.memorize,
           recall: a.recall, test: a.test, testType: a.testType,
           entries: [],
@@ -5237,6 +5253,7 @@ function buildAssignSummaryTextCore(classIds) {
         order.push(sigKey);
       }
       groups[sigKey].entries.push({ clsId: stu.classId, stuName: stu.name });
+      });
     });
 
     if (!order.length) return;
@@ -5393,12 +5410,12 @@ function renderAssignSummaryBody() {
       const order  = [];
 
       DB.students.forEach(stu => {
-        const a = DB.assignments.find(x => x.studentId === stu.id && x.type === type && isActive(x));
-        if (!a) return;
-        const sigKey = [a.book, a.startDate, a.sets||'', a.perSet||'', a.memorize||'', a.recall||'', a.test||'', a.testType||'', stu.classId, JSON.stringify(a.pausePeriods||[])].join('|');
+        const stuAssigns = DB.assignments.filter(x => x.studentId === stu.id && x.type === type && isActive(x));
+        stuAssigns.forEach(a => {
+        const sigKey = [normalizeBook(a.book), a.startDate, a.sets||'', a.perSet||'', a.memorize||'', a.recall||'', a.test||'', a.testType||'', stu.classId, JSON.stringify(a.pausePeriods||[])].join('|');
         if (!groups[sigKey]) {
           groups[sigKey] = {
-            book: a.book, startDate: a.startDate, end: endDateOf(a),
+            book: normalizeBook(a.book), startDate: a.startDate, end: endDateOf(a),
             sets: a.sets, perSet: a.perSet, memorize: a.memorize,
             recall: a.recall, test: a.test, testType: a.testType,
             entries: [],
@@ -5406,6 +5423,7 @@ function renderAssignSummaryBody() {
           order.push(sigKey);
         }
         groups[sigKey].entries.push({ clsId: stu.classId, stuName: stu.name });
+        });
       });
 
       const rows = order.map(k => ({ type, isVoca, ...groups[k] }));
@@ -6011,7 +6029,7 @@ function saveAssignConfirm() {
   // ① 입력값 수집 & 유효성 검사
   const classId   = document.getElementById('assign-class-select').value;
   const type      = document.querySelector('input[name="assign-type"]:checked')?.value;
-  const book      = document.getElementById('assign-book').value.trim();
+  const book      = normalizeBook(document.getElementById('assign-book').value);
   const startDate = document.getElementById('assign-start').value;
 
   if (!type)      { toast('과제 유형을 선택하세요.', 'error'); return; }
@@ -6071,23 +6089,37 @@ function saveAssignConfirm() {
 
   const newCount = isVoca ? sets : 0; // 교재는 count 없음
 
-  // ② 선택된 학생 각각에 대해 새 과제 객체 생성
-  // 교재(MAIN/SUB)는 날짜범위 계산 불가이므로 겹침 체크 건너뜀
-  const batch = [];
-  const overlapNames = [];
+  // 교재(MAIN/SUB): 같은 학생+같은 유형+같은 교재명+같은 시작일 완전 중복 → 확인 후 제외 진행
+  let excludeIds = new Set();
+  if (isTextbook) {
+    const dupNames = [];
+    for (const studentId of selectedIds) {
+      const dup = DB.assignments.find(a =>
+        a.studentId === studentId && a.type === type &&
+        a.book === book && a.startDate === startDate
+      );
+      if (dup) {
+        const stu = getStudentById(studentId);
+        dupNames.push(stu?.name || '?');
+        excludeIds.add(studentId);
+      }
+    }
+    if (dupNames.length > 0) {
+      const remain = selectedIds.length - dupNames.length;
+      const ok = confirm(
+        `이미 동일한 과제가 있는 학생:\n${dupNames.join(', ')}\n(${book}, ${startDate} 시작)\n\n` +
+        (remain > 0
+          ? `이 학생들을 제외하고 나머지 ${remain}명만 저장할까요?`
+          : `선택한 학생 전원이 이미 동일한 과제를 갖고 있어 저장할 대상이 없습니다.`)
+      );
+      if (!ok || remain === 0) { toast('저장이 취소되었습니다.', 'warning'); return; }
+    }
+  }
 
-  for (const studentId of selectedIds) {
-    const newAssign = {
-      id: genId(),
-      studentId, classId, type, book, startDate,
-      endDate: isTextbook ? inputEndDate : null,
-      ...(isVoca ? {sets, perSet, memorize, recall, test, testType} : {}),
-      ...(type === 'SV' && studyDays ? {studyDays} : {}),
-      createdAt: new Date().toISOString()
-    };
-
-    // 보카만 날짜 겹침 체크 (교재는 endDate 미입력이므로 체크 불가)
-    if (isVoca) {
+  // 보카(SV/HV): 날짜 겹침 → 확인 후 겹치는 학생만 제외하고 진행
+  if (isVoca) {
+    const overlapNames = [];
+    for (const studentId of selectedIds) {
       const existingList = DB.assignments.filter(a => a.studentId === studentId && a.type === type);
       const overlapping = existingList.find(ex => {
         const exCount = ex.sets || 0;
@@ -6099,36 +6131,40 @@ function saveAssignConfirm() {
       if (overlapping) {
         const stu = getStudentById(studentId);
         overlapNames.push(`${stu?.name||'?'} (기존: ${overlapping.book} ${overlapping.startDate} 시작)`);
-        batch.push({assignment: newAssign, overlapId: overlapping.id});
-      } else {
-        batch.push({assignment: newAssign, overlapId: null});
+        excludeIds.add(studentId);
       }
-    } else {
-      batch.push({assignment: newAssign, overlapId: null});
+    }
+    if (overlapNames.length > 0) {
+      const remain = selectedIds.length - overlapNames.length;
+      const ok = confirm(
+        `날짜가 겹치는 학생:\n${overlapNames.join('\n')}\n\n` +
+        (remain > 0
+          ? `이 학생들을 제외하고 나머지 ${remain}명만 저장할까요?`
+          : `선택한 학생 전원이 날짜가 겹쳐 저장할 대상이 없습니다.`)
+      );
+      if (!ok || remain === 0) { toast('저장이 취소되었습니다.', 'warning'); return; }
     }
   }
 
-  // ③ 겹치는 학생이 없으면 바로 전체 저장
-  if (overlapNames.length === 0) {
-    _executeBatch(batch, false);
-    return;
+  const finalIds = selectedIds.filter(id => !excludeIds.has(id));
+
+  // ② 선택된 학생 각각에 대해 새 과제 객체 생성
+  const batch = [];
+
+  for (const studentId of finalIds) {
+    const newAssign = {
+      id: genId(),
+      studentId, classId, type, book, startDate,
+      endDate: isTextbook ? inputEndDate : null,
+      ...(isVoca ? {sets, perSet, memorize, recall, test, testType} : {}),
+      ...(type === 'SV' && studyDays ? {studyDays} : {}),
+      createdAt: new Date().toISOString()
+    };
+    batch.push({assignment: newAssign, overlapId: null});
   }
 
-  // ④ 겹치는 학생이 있으면 인라인 경고 + 교체/누적 선택
-  _pendingBatch = batch;
-  const nonOverlapCnt = batch.filter(b => !b.overlapId).length;
-  let msg = overlapNames.map(n => `• ${n}`).join('<br>');
-  if (nonOverlapCnt > 0) {
-    msg += `<br><span style="color:var(--amber)">※ 나머지 ${nonOverlapCnt}명은 날짜가 겹치지 않아 누적 추가됩니다.</span>`;
-  }
-  msg += `<br><br>겹치는 학생의 기존 과제를 삭제하고 교체하시겠습니까?`;
-
-  document.getElementById('assign-overlap-msg').innerHTML = msg;
-  document.getElementById('assign-overlap-warn').style.display = '';
-  document.getElementById('assign-modal-footer').innerHTML = `
-    <button class="btn btn-ghost btn-sm" onclick="_cancelBatch()">취소</button>
-    <button class="btn btn-primary btn-sm" onclick="_executeBatch(_pendingBatch, false)">겹치는 것만 누적 추가</button>
-    <button class="btn btn-danger btn-sm" onclick="_executeBatch(_pendingBatch, true)">기존 삭제 후 교체</button>`;
+  // ③ 겹침이 없으므로 바로 전체 저장
+  _executeBatch(batch, false);
 }
 
 // 배치 실행: replaceOverlap=true면 겹치는 기존 과제 삭제 후 저장, false면 그냥 누적
@@ -6257,14 +6293,17 @@ function openEditAssignModal(assignId) {
   const bulkList      = document.getElementById('assign-bulk-list');
   const bulkSelectAll = document.getElementById('bulk-select-all');
 
-  // 같은 반 + 같은 type + 같은 book 과제를 가진 다른 학생 탐색
+  // 같은 반 + 같은 type + 같은 book 과제를 가진 다른 학생 탐색 (진행중인 것 우선)
   const sameClassStudents = DB.students.filter(s => s.classId === a.classId && s.id !== a.studentId);
   const bulkCandidates = [];
   for (const s of sameClassStudents) {
-    const match = DB.assignments.find(x =>
+    const matches = DB.assignments.filter(x =>
       x.studentId === s.id && x.type === a.type && x.book === a.book
     );
-    if (match) bulkCandidates.push({ stu: s, assign: match });
+    if (matches.length === 0) continue;
+    const active = matches.find(x => !isAssignDone(x));
+    const match  = active || matches.slice().sort((x,y) => (y.startDate||'').localeCompare(x.startDate||''))[0];
+    bulkCandidates.push({ stu: s, assign: match });
   }
 
   if (bulkCandidates.length === 0) {
@@ -6318,7 +6357,7 @@ function saveEditAssign(bulkConfirmed) {
   if (!a) { toast('수정할 과제를 찾을 수 없습니다.', 'error'); closeModal('modal-add-assign'); return; }
 
   const type      = a.type; // 유형 변경 불가
-  const book      = document.getElementById('assign-book').value.trim();
+  const book      = normalizeBook(document.getElementById('assign-book').value);
   const startDate = document.getElementById('assign-start').value;
 
   // 유효성 검사
@@ -6367,12 +6406,7 @@ function saveEditAssign(bulkConfirmed) {
     );
     if (overlapping) {
       const stu = getStudentById(a.studentId);
-      const warn = document.getElementById('assign-overlap-warn');
-      const msg  = document.getElementById('assign-overlap-msg');
-      if (warn && msg) {
-        msg.innerHTML = `• ${stu?.name||'?'} (기존: ${overlapping.book} ${overlapping.startDate} 시작)<br>날짜가 겹칩니다. 시작일 또는 세트수를 조정하세요.`;
-        warn.style.display = '';
-      }
+      toast(`날짜가 겹치는 과제가 있습니다: ${stu?.name||'?'} (기존: ${overlapping.book} ${overlapping.startDate} 시작)`, 'error');
       return;
     }
 
@@ -6389,6 +6423,16 @@ function saveEditAssign(bulkConfirmed) {
       inputEndDate = rawEnd;
     } else {
       inputEndDate = null;
+    }
+
+    // 완전 동일 중복 차단 (같은 학생+유형+교재명+시작일, 자기 자신 제외)
+    const dup = DB.assignments.find(x =>
+      x.studentId === a.studentId && x.type === type &&
+      x.book === book && x.startDate === startDate && x.id !== _editingAssignId
+    );
+    if (dup) {
+      toast(`이미 동일한 과제가 있습니다. (${book}, ${startDate} 시작)`, 'error');
+      return;
     }
   }
 
