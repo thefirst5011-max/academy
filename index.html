@@ -488,7 +488,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   <button class="hdr-hamburger" onclick="toggleSidebar()" aria-label="메뉴 열기">☰</button>
   <span class="hdr-logo">🏫</span>
   <span class="hdr-title">학원 학습 관리 시스템</span>
-  <span class="hdr-badge">v4.3</span>
+  <span class="hdr-badge">v4.4</span>
   <div class="hdr-right">
     <span style="font-size:10px;color:var(--sb-text2)">자동저장</span>
     <span class="hdr-save-status saved" id="save-status">● 저장됨</span>
@@ -4194,9 +4194,20 @@ function toggleVocaGroupExpand(key) {
 
 function renderVocaPage() {
   const classTabsHTML = `
-    <div class="tab-bar">
-      <button class="tab-btn ${!currentClassFilter?'active':''}" onclick="currentClassFilter=null;showPage('voca')">전체</button>
-      ${DB.classes.map(cls=>`<button class="tab-btn ${currentClassFilter===cls.id?'active':''}" onclick="showPage('voca','${cls.id}')">${cls.name}</button>`).join('')}
+    <div class="tab-bar" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+      <div style="display:flex;flex-wrap:wrap">
+        <button class="tab-btn ${!currentClassFilter?'active':''}" onclick="currentClassFilter=null;showPage('voca')">전체</button>
+        ${DB.classes.map(cls=>`<button class="tab-btn ${currentClassFilter===cls.id?'active':''}" onclick="showPage('voca','${cls.id}')">${cls.name}</button>`).join('')}
+      </div>
+      <div style="position:relative;display:flex;align-items:center;gap:8px;flex-shrink:0">
+        <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text3);font-size:13px;pointer-events:none">🔍</span>
+        <input id="voca-search-input" type="text" class="form-input"
+          placeholder="학생 이름 검색..."
+          style="padding-left:32px;width:200px;height:32px;font-size:12px"
+          oninput="filterVocaTable(this.value)"
+          oncompositionend="filterVocaTable(this.value)">
+        <span id="voca-search-count" style="font-size:11px;color:var(--text3);white-space:nowrap"></span>
+      </div>
     </div>`;
 
   const viewToggleHTML = `
@@ -4213,18 +4224,6 @@ function renderVocaPage() {
     <div class="page-header"><div class="page-title">보카학습이력</div></div>
     ${classTabsHTML}
     <div class="empty-state"><div class="empty-title">반이 없습니다</div></div>`;
-
-  // ── 검색바 (전역 상태로 검색어 유지)
-  const searchBar = `
-    <div style="position:relative;margin-bottom:14px;display:flex;align-items:center;gap:10px">
-      <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text3);font-size:13px;pointer-events:none">🔍</span>
-      <input id="voca-search-input" type="text" class="form-input"
-        placeholder="학생 이름 검색..."
-        style="padding-left:32px;max-width:260px;height:36px"
-        oninput="filterVocaTable(this.value)"
-        oncompositionend="filterVocaTable(this.value)">
-      <span id="voca-search-count" style="font-size:12px;color:var(--text3)"></span>
-    </div>`;
 
   const tableHTML = showClasses.map((cls) => {
     const realIdx = DB.classes.findIndex(c=>c.id===cls.id);
@@ -4333,7 +4332,7 @@ function renderVocaPage() {
 
       const done      = isAssignDone(a);
       const typeColor = isSV ? '#3A5A9A' : '#A86820';
-      const bg        = done ? '#FAFAF8' : '#FFFFFF';
+      const bg        = done ? '#FAFAF8' : (isSV ? '#EEF2FA' : '#FDF3E4');
       const bd        = done ? '1px solid #ECEAE6' : '1px solid #E2DFD8';
       const dotBg     = done ? '#C8C8C6' : typeColor;
       const bookColor = done ? 'var(--text2)' : 'var(--text)';
@@ -4389,7 +4388,6 @@ function renderVocaPage() {
     </div>
     ${classTabsHTML}
     ${viewToggleHTML}
-    ${searchBar}
     <div id="voca-table-wrap">
       ${tableHTML || '<div class="empty-state"><div class="empty-title">데이터가 없습니다</div></div>'}
     </div>`;
@@ -4464,8 +4462,10 @@ function renderTextbookPage() {
 
     const stuData = students.map(stu => ({
       stu,
-      mainList: getAssignmentsByStudent(stu.id).filter(a=>a.type==='MAIN'),
-      subList:  getAssignmentsByStudent(stu.id).filter(a=>a.type==='SUB'),
+      mainList: getAssignmentsByStudent(stu.id).filter(a=>a.type==='MAIN')
+        .sort((a,b) => (b.startDate||'').localeCompare(a.startDate||'')),
+      subList:  getAssignmentsByStudent(stu.id).filter(a=>a.type==='SUB')
+        .sort((a,b) => (b.startDate||'').localeCompare(a.startDate||'')),
     }));
     const maxRows = stuData.length === 0 ? 0 : Math.max(...stuData.map(d => Math.max(d.mainList.length, d.subList.length, 1)));
 
@@ -4491,7 +4491,7 @@ function renderTextbookPage() {
 
       const done      = isAssignDone(a);
       const typeColor = isMain ? '#3E7A5A' : '#7A3020';
-      const bg        = done ? '#FAFAF8' : '#FFFFFF';
+      const bg        = done ? '#FAFAF8' : (isMain ? '#EDF4E9' : '#FBEEEA');
       const bd        = done ? '1px solid #ECEAE6' : '1px solid #E2DFD8';
       const dotBg     = done ? '#C8C8C6' : typeColor;
       const bookColor = done ? 'var(--text2)' : 'var(--text)';
