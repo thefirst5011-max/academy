@@ -488,7 +488,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   <button class="hdr-hamburger" onclick="toggleSidebar()" aria-label="메뉴 열기">☰</button>
   <span class="hdr-logo">🏫</span>
   <span class="hdr-title">학원 학습 관리 시스템</span>
-  <span class="hdr-badge">v4.6</span>
+  <span class="hdr-badge">v4.7</span>
   <div class="hdr-right">
     <span style="font-size:10px;color:var(--sb-text2)">자동저장</span>
     <span class="hdr-save-status saved" id="save-status">● 저장됨</span>
@@ -1597,6 +1597,12 @@ function normalizeBook(str) {
     .replace(/[\u200B\u200C\u200D\uFEFF]/g, ''); // 보이지 않는 폭 0 문자 제거
 }
 
+// 커리큘럼 로드맵 매칭 전용: "2차 중등필수" → "중등필수" 처럼 앞의 "N차" 접두사 제거
+// (실제 교재명 자체는 그대로 저장/표시하고, 순서표와 대조할 때만 이 값을 사용)
+function baseBookName(str) {
+  return normalizeBook(str).replace(/^\d+\s*차\s*/, '');
+}
+
 function formatDateKo(d) {
   const dt = typeof d === 'string' ? new Date(d + 'T00:00:00') : d;
   const days = ['일','월','화','수','목','금','토'];
@@ -1752,8 +1758,8 @@ const BOOK_LIBRARY_DEFAULT = {
 // BOOK_LIBRARY_DEFAULT를 학습 순서(첨부 커리순서.xlsx 기준)로 그대로 사용
 function curriculumIndexOf(type, book) {
   const list = BOOK_LIBRARY_DEFAULT[type] || [];
-  const norm = normalizeBook(book);
-  return list.findIndex(b => normalizeBook(b) === norm);
+  const norm = baseBookName(book);
+  return list.findIndex(b => baseBookName(b) === norm);
 }
 function nextCurriculumBook(type, book) {
   const list = BOOK_LIBRARY_DEFAULT[type] || [];
@@ -3698,9 +3704,10 @@ function renderStudentDetailPage() {
       if (!list.length) return { label, color, type, rowsHTML: '', nextHTML: '', studiedCount: 0, total: 0 };
 
       // 학생이 학습한(과제로 등록된 적 있는) 교재명 집합 + 완료여부
-      const bookStatus = {}; // normalizedBook -> 'active' | 'done'
+      // 차수(N차)는 무시하고 뒤의 교재명 기준으로 매칭
+      const bookStatus = {}; // baseBookName -> 'active' | 'done'
       assigns.filter(a => a.type === type).forEach(a => {
-        const key = normalizeBook(a.book);
+        const key = baseBookName(a.book);
         const st  = isAssignDone(a) ? 'done' : 'active';
         // 이미 active로 표시돼 있으면 유지(진행중이 우선), 아니면 최신 상태로 갱신
         if (bookStatus[key] !== 'active') bookStatus[key] = st;
@@ -3712,7 +3719,7 @@ function renderStudentDetailPage() {
       const currentBook = activeOnes.length ? activeOnes[0].book : null;
 
       const rowsHTML2 = list.map(book => {
-        const norm = normalizeBook(book);
+        const norm = baseBookName(book);
         const status = bookStatus[norm]; // 'active' | 'done' | undefined
         const isCurrent = status === 'active';
 
