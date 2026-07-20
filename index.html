@@ -488,7 +488,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   <button class="hdr-hamburger" onclick="toggleSidebar()" aria-label="메뉴 열기">☰</button>
   <span class="hdr-logo">🏫</span>
   <span class="hdr-title">학원 학습 관리 시스템</span>
-  <span class="hdr-badge">v4.7</span>
+  <span class="hdr-badge">v4.9</span>
   <div class="hdr-right">
     <span style="font-size:10px;color:var(--sb-text2)">자동저장</span>
     <span class="hdr-save-status saved" id="save-status">● 저장됨</span>
@@ -1597,10 +1597,17 @@ function normalizeBook(str) {
     .replace(/[\u200B\u200C\u200D\uFEFF]/g, ''); // 보이지 않는 폭 0 문자 제거
 }
 
-// 커리큘럼 로드맵 매칭 전용: "2차 중등필수" → "중등필수" 처럼 앞의 "N차" 접두사 제거
-// (실제 교재명 자체는 그대로 저장/표시하고, 순서표와 대조할 때만 이 값을 사용)
+// 커리큘럼 로드맵 매칭 전용: "2차 중등필수", "5형식 5차" 처럼
+// "N차"가 앞이나 뒤 어디에 붙어도 제거하고 순수 교재명만 비교
 function baseBookName(str) {
-  return normalizeBook(str).replace(/^\d+\s*차\s*/, '');
+  return normalizeBook(str)
+    .replace(/^\d+\s*차\s*/, '')  // 앞에 붙은 경우: "2차 중등필수" → "중등필수"
+    .replace(/\s*\d+\s*차\s*$/, ''); // 뒤에 붙은 경우: "5형식 5차" → "5형식"
+}
+// 교재명에서 회차(N차) 숫자만 추출 — 앞/뒤 어디 있어도 찾음
+function extractCha(str) {
+  const m = normalizeBook(str).match(/(\d+)\s*차/);
+  return m ? parseInt(m[1], 10) : null;
 }
 
 function formatDateKo(d) {
@@ -3706,11 +3713,18 @@ function renderStudentDetailPage() {
       // 학생이 학습한(과제로 등록된 적 있는) 교재명 집합 + 완료여부
       // 차수(N차)는 무시하고 뒤의 교재명 기준으로 매칭
       const bookStatus = {}; // baseBookName -> 'active' | 'done'
+      const bookChaMap  = {}; // baseBookName -> [{cha, done}] 회차별 상태 (차수 표기용)
       assigns.filter(a => a.type === type).forEach(a => {
         const key = baseBookName(a.book);
         const st  = isAssignDone(a) ? 'done' : 'active';
         // 이미 active로 표시돼 있으면 유지(진행중이 우선), 아니면 최신 상태로 갱신
         if (bookStatus[key] !== 'active') bookStatus[key] = st;
+
+        const cha = extractCha(a.book);
+        if (cha !== null) {
+          if (!bookChaMap[key]) bookChaMap[key] = [];
+          bookChaMap[key].push({ cha, done: st === 'done' });
+        }
       });
       const studiedCount = Object.keys(bookStatus).length;
 
@@ -3723,16 +3737,33 @@ function renderStudentDetailPage() {
         const status = bookStatus[norm]; // 'active' | 'done' | undefined
         const isCurrent = status === 'active';
 
+        // 회차 요약 텍스트: "1~2차 완료 · 3차 진행중" 형태로 구성
+        let chaSummary = '';
+        const chaList = bookChaMap[norm];
+        if (chaList && chaList.length > 0) {
+          const doneNums   = chaList.filter(c=>c.done).map(c=>c.cha).sort((a,b)=>a-b);
+          const activeNums = chaList.filter(c=>!c.done).map(c=>c.cha).sort((a,b)=>a-b);
+          const parts = [];
+          if (doneNums.length) {
+            const label = doneNums.length > 1 ? `${doneNums[0]}~${doneNums[doneNums.length-1]}차 완료` : `${doneNums[0]}차 완료`;
+            parts.push(label);
+          }
+          if (activeNums.length) {
+            parts.push(`${activeNums.join(',')}차 진행중`);
+          }
+          chaSummary = parts.join(' · ');
+        }
+
         let badge = '';
         let bg = 'var(--surface)';
         let fg = 'var(--text3)';
         let fw = 400;
         if (isCurrent) {
           bg = color; fg = '#fff'; fw = 800;
-          badge = `<span style="font-size:9px;font-weight:800;padding:1px 6px;border-radius:3px;background:rgba(255,255,255,.25);margin-left:auto">진행중</span>`;
+          badge = `<span style="font-size:9px;font-weight:800;padding:1px 6px;border-radius:3px;background:rgba(255,255,255,.25);margin-left:auto;white-space:nowrap">${chaSummary || '진행중'}</span>`;
         } else if (status === 'done') {
           bg = '#F0E9D8'; fg = '#5A4010'; fw = 700;
-          badge = `<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:3px;background:#E0D0A0;color:#5A4010;margin-left:auto">완료</span>`;
+          badge = `<span style="font-size:9px;font-weight:700;padding:1px 6px;border-radius:3px;background:#E0D0A0;color:#5A4010;margin-left:auto;white-space:nowrap">${chaSummary || '완료'}</span>`;
         }
         return `<div style="display:flex;align-items:center;gap:6px;padding:4px 9px;border-radius:5px;
           background:${bg};color:${fg};font-size:11px;font-weight:${fw};margin-bottom:2px">
