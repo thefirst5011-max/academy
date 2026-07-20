@@ -488,7 +488,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   <button class="hdr-hamburger" onclick="toggleSidebar()" aria-label="메뉴 열기">☰</button>
   <span class="hdr-logo">🏫</span>
   <span class="hdr-title">학원 학습 관리 시스템</span>
-  <span class="hdr-badge">v4.9</span>
+  <span class="hdr-badge">v5.0</span>
   <div class="hdr-right">
     <span style="font-size:10px;color:var(--sb-text2)">자동저장</span>
     <span class="hdr-save-status saved" id="save-status">● 저장됨</span>
@@ -516,11 +516,8 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
     <div class="sb-item" onclick="showPage('stuDetail')" id="nav-stuDetail">
       <span class="sb-item-icon">👤</span>학생개별관리
     </div>
-    <div class="sb-item" onclick="showPage('classSummary')" id="nav-classSummary">
-      <span class="sb-item-icon">📋</span>수업 요약
-    </div>
     <div class="sb-item" onclick="showPage('stuSummary')" id="nav-stuSummary">
-      <span class="sb-item-icon">🧑‍🎓</span>학생요약/과제요약
+      <span class="sb-item-icon">📋</span>수업요약/과제요약
     </div>
     <div class="sb-item" onclick="showPage('status')" id="nav-status">
       <span class="sb-item-icon">📊</span>반별학습현황
@@ -1797,7 +1794,7 @@ function showPage(page, classId) {
   closeSidebar(); // 모바일: 메뉴 선택 시 사이드바 자동 닫기
 
   // 네비 활성화
-  ['dashboard','student','attendance','assign','stuDetail','classSummary','stuSummary','status','history','voca','textbook','settings'].forEach(p => {
+  ['dashboard','student','attendance','assign','stuDetail','stuSummary','status','history','voca','textbook','settings'].forEach(p => {
     const el = document.getElementById('nav-'+p);
     if (el) el.classList.toggle('active', p === page);
   });
@@ -1814,7 +1811,6 @@ function showPage(page, classId) {
     attendance:  renderAttendancePage,
     assign:      renderAssignPage,
     stuDetail:    renderStudentDetailPage,
-    classSummary: renderClassSummaryPage,
     stuSummary:   renderStudentSummaryPage,
     status:       renderStatusPage,
     history:     renderHistoryPage,
@@ -5125,7 +5121,7 @@ function renderClassSummaryPage() {
 }
 // ── 학생 요약 페이지 ────────────────────────────────────────
 // ── 학생요약/과제요약 통합 페이지 ─────────────────────────────
-let _stuSummaryViewMode = 'student'; // 'student' | 'assign'
+let _stuSummaryViewMode = 'class'; // 'class' | 'assign'
 
 function setStuSummaryViewMode(mode) {
   _stuSummaryViewMode = mode;
@@ -5136,7 +5132,7 @@ function renderStudentSummaryPage() {
   const toggleHTML = `
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
       <div style="display:flex;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:3px;gap:3px">
-        <button class="btn btn-sm ${_stuSummaryViewMode==='student'?'btn-primary':'btn-ghost'}" onclick="setStuSummaryViewMode('student')">학생요약</button>
+        <button class="btn btn-sm ${_stuSummaryViewMode==='class'?'btn-primary':'btn-ghost'}" onclick="setStuSummaryViewMode('class')">수업요약</button>
         <button class="btn btn-sm ${_stuSummaryViewMode==='assign'?'btn-primary':'btn-ghost'}"   onclick="setStuSummaryViewMode('assign')">과제요약</button>
       </div>
       ${_stuSummaryViewMode==='assign' ? `<button class="btn btn-ghost btn-sm" style="color:var(--blue)" onclick="copyAssignSummary()">📋 텍스트 복사</button>` : ''}
@@ -5144,7 +5140,7 @@ function renderStudentSummaryPage() {
 
   const body = _stuSummaryViewMode === 'assign'
     ? renderAssignSummaryBody()
-    : renderStudentSummaryBody();
+    : renderClassSummaryPage();
 
   return toggleHTML + body;
 }
