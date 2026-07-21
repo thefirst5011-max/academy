@@ -488,7 +488,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   <button class="hdr-hamburger" onclick="toggleSidebar()" aria-label="메뉴 열기">☰</button>
   <span class="hdr-logo">🏫</span>
   <span class="hdr-title">학원 학습 관리 시스템</span>
-  <span class="hdr-badge">v5.3</span>
+  <span class="hdr-badge">v5.4</span>
   <div class="hdr-right">
     <span style="font-size:10px;color:var(--sb-text2)">자동저장</span>
     <span class="hdr-save-status saved" id="save-status">● 저장됨</span>
@@ -1948,28 +1948,52 @@ function renderDashboard() {
       const clsIdx = DB.classes.findIndex(c=>c.id===group.clsId);
       const color  = getClassColor(clsIdx);
 
-      const rowsHTML = group.items.map(a => {
-        const s = LEVEL_STYLE[a.level];
-        const diffLabel = a.diffDay === 0 ? '오늘 종료'
-          : a.diffDay === 1 ? '내일 종료'
-          : `${a.diffDay}일 후 종료`;
+      // 같은 유형+같은 교재명+같은 종료일로 묶어서, 여러 명이면 "다같이 새 과제" 제공
+      const sigGroups = {}; // sigKey -> {items:[...]}
+      const sigOrder = [];
+      group.items.forEach(a => {
+        const key = [a.type, normalizeBook(a.book), a.endDate].join('|');
+        if (!sigGroups[key]) { sigGroups[key] = []; sigOrder.push(key); }
+        sigGroups[key].push(a);
+      });
+
+      const rowsHTML = sigOrder.map(key => {
+        const items = sigGroups[key];
+        const groupBtn = items.length > 1
+          ? `<button class="btn btn-success btn-sm" style="flex-shrink:0;padding:4px 10px;font-size:11px"
+               onclick="openBulkAlertAssignModal('${group.clsId}','${items.map(a=>a.stuId).join(',')}')">
+               👥 ${items.length}명 다같이 새 과제</button>`
+          : '';
+
+        const itemRows = items.map(a => {
+          const s = LEVEL_STYLE[a.level];
+          const diffLabel = a.diffDay === 0 ? '오늘 종료'
+            : a.diffDay === 1 ? '내일 종료'
+            : `${a.diffDay}일 후 종료`;
+
+          return `
+            <div style="display:flex;align-items:center;gap:10px;padding:9px 12px;
+              border-radius:8px;background:${s.bg};border:1px solid ${s.border};margin-bottom:6px">
+              <span style="font-size:14px;flex-shrink:0">${s.icon}</span>
+              <div style="flex-shrink:0;min-width:60px">
+                <span style="display:inline-block;padding:2px 8px;border-radius:4px;
+                  font-size:10px;font-weight:700;background:${s.badgeBg};color:${s.badge};
+                  border:1px solid ${s.border}">${s.label}</span>
+              </div>
+              <span class="type-chip ${TYPE_CHIPS[a.type]}" style="flex-shrink:0">${TYPE_LABELS[a.type]}</span>
+              <span style="font-weight:700;font-size:13px;flex-shrink:0">${a.stuName}</span>
+              <span style="font-size:12px;color:var(--text2);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.book}</span>
+              <span style="font-size:11px;color:var(--text3);flex-shrink:0;white-space:nowrap">시작 ${a.startDate}</span>
+              <span style="font-size:11px;font-weight:700;color:${s.badge};flex-shrink:0;white-space:nowrap">${diffLabel} (${a.endDate})</span>
+              <button class="btn btn-primary btn-sm" style="flex-shrink:0;padding:4px 10px;font-size:11px"
+                onclick="openAddAssignModal('${a.clsId}','${a.stuId}')">＋ 새 과제</button>
+            </div>`;
+        }).join('');
 
         return `
-          <div style="display:flex;align-items:center;gap:10px;padding:9px 12px;
-            border-radius:8px;background:${s.bg};border:1px solid ${s.border};margin-bottom:6px">
-            <span style="font-size:14px;flex-shrink:0">${s.icon}</span>
-            <div style="flex-shrink:0;min-width:60px">
-              <span style="display:inline-block;padding:2px 8px;border-radius:4px;
-                font-size:10px;font-weight:700;background:${s.badgeBg};color:${s.badge};
-                border:1px solid ${s.border}">${s.label}</span>
-            </div>
-            <span class="type-chip ${TYPE_CHIPS[a.type]}" style="flex-shrink:0">${TYPE_LABELS[a.type]}</span>
-            <span style="font-weight:700;font-size:13px;flex-shrink:0">${a.stuName}</span>
-            <span style="font-size:12px;color:var(--text2);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.book}</span>
-            <span style="font-size:11px;color:var(--text3);flex-shrink:0;white-space:nowrap">시작 ${a.startDate}</span>
-            <span style="font-size:11px;font-weight:700;color:${s.badge};flex-shrink:0;white-space:nowrap">${diffLabel} (${a.endDate})</span>
-            <button class="btn btn-primary btn-sm" style="flex-shrink:0;padding:4px 10px;font-size:11px"
-              onclick="openAddAssignModal('${a.clsId}','${a.stuId}')">＋ 새 과제</button>
+          <div style="margin-bottom:6px">
+            ${groupBtn ? `<div style="display:flex;justify-content:flex-end;margin-bottom:4px">${groupBtn}</div>` : ''}
+            ${itemRows}
           </div>`;
       }).join('');
 
@@ -6099,6 +6123,12 @@ function moveStudentConfirm() {
 // ══════════════════════════════════════════════════════════
 // 13. 과제 관리 액션
 // ══════════════════════════════════════════════════════════
+// 대시보드 알림에서 "N명 다같이 새 과제" 클릭 시 호출 — 콤마 구분 학생ID를 배열로 변환
+function openBulkAlertAssignModal(classId, studentIdsCsv) {
+  const ids = studentIdsCsv.split(',').filter(Boolean);
+  openAddAssignModal(classId, ids);
+}
+
 function openAddAssignModal(classId, studentId) {
   // 추가 모드 UI 설정
   _editingAssignId = null;
@@ -6118,10 +6148,11 @@ function openAddAssignModal(classId, studentId) {
   // 학생 체크박스 목록 생성
   onAssignClassChange();
 
-  // 특정 학생만 사전선택
+  // 특정 학생만 사전선택 (studentId: 문자열 하나 또는 배열)
   if (studentId) {
+    const idSet = Array.isArray(studentId) ? new Set(studentId) : new Set([studentId]);
     document.querySelectorAll('#assign-stu-list .stu-cb').forEach(cb => {
-      const shouldCheck = cb.value === studentId;
+      const shouldCheck = idSet.has(cb.value);
       cb.checked = shouldCheck;
       cb.closest('.stu-check-item').classList.toggle('checked', shouldCheck);
     });
