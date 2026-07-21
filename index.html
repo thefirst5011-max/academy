@@ -488,7 +488,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   <button class="hdr-hamburger" onclick="toggleSidebar()" aria-label="메뉴 열기">☰</button>
   <span class="hdr-logo">🏫</span>
   <span class="hdr-title">학원 학습 관리 시스템</span>
-  <span class="hdr-badge">v5.4</span>
+  <span class="hdr-badge">v5.5</span>
   <div class="hdr-right">
     <span style="font-size:10px;color:var(--sb-text2)">자동저장</span>
     <span class="hdr-save-status saved" id="save-status">● 저장됨</span>
@@ -1961,7 +1961,7 @@ function renderDashboard() {
         const items = sigGroups[key];
         const groupBtn = items.length > 1
           ? `<button class="btn btn-success btn-sm" style="flex-shrink:0;padding:4px 10px;font-size:11px"
-               onclick="openBulkAlertAssignModal('${group.clsId}','${items.map(a=>a.stuId).join(',')}')">
+               onclick="openBulkAlertAssignModal('${group.clsId}','${items.map(a=>a.stuId).join(',')}','${items[0].assignId}')">
                👥 ${items.length}명 다같이 새 과제</button>`
           : '';
 
@@ -1986,7 +1986,7 @@ function renderDashboard() {
               <span style="font-size:11px;color:var(--text3);flex-shrink:0;white-space:nowrap">시작 ${a.startDate}</span>
               <span style="font-size:11px;font-weight:700;color:${s.badge};flex-shrink:0;white-space:nowrap">${diffLabel} (${a.endDate})</span>
               <button class="btn btn-primary btn-sm" style="flex-shrink:0;padding:4px 10px;font-size:11px"
-                onclick="openAddAssignModal('${a.clsId}','${a.stuId}')">＋ 새 과제</button>
+                onclick="openAddAssignModal('${a.clsId}','${a.stuId}','${a.assignId}')">＋ 새 과제</button>
             </div>`;
         }).join('');
 
@@ -6124,12 +6124,12 @@ function moveStudentConfirm() {
 // 13. 과제 관리 액션
 // ══════════════════════════════════════════════════════════
 // 대시보드 알림에서 "N명 다같이 새 과제" 클릭 시 호출 — 콤마 구분 학생ID를 배열로 변환
-function openBulkAlertAssignModal(classId, studentIdsCsv) {
+function openBulkAlertAssignModal(classId, studentIdsCsv, prefillAssignId) {
   const ids = studentIdsCsv.split(',').filter(Boolean);
-  openAddAssignModal(classId, ids);
+  openAddAssignModal(classId, ids, prefillAssignId);
 }
 
-function openAddAssignModal(classId, studentId) {
+function openAddAssignModal(classId, studentId, prefillAssignId) {
   // 추가 모드 UI 설정
   _editingAssignId = null;
   document.getElementById('assign-modal-title').textContent = '과제 설정';
@@ -6157,6 +6157,59 @@ function openAddAssignModal(classId, studentId) {
       cb.closest('.stu-check-item').classList.toggle('checked', shouldCheck);
     });
     updateStuCount();
+  }
+
+  // 이전 과제(prefillAssignId) 기준으로 값 자동 채우기 — 교재명은 차수+1로 자동 증가
+  const prefillSrc = prefillAssignId ? DB.assignments.find(x => x.id === prefillAssignId) : null;
+
+  if (prefillSrc) {
+    // 교재명 차수 계산: "1차 5형식" → "2차 5형식", "5형식 1차" → "5형식 2차"
+    function bumpCha(book) {
+      const norm = normalizeBook(book);
+      const mFront = norm.match(/^(\d+)(\s*차\s*)(.+)$/);
+      if (mFront) return `${parseInt(mFront[1],10)+1}${mFront[2]}${mFront[3]}`;
+      const mBack = norm.match(/^(.+?)(\s*)(\d+)(\s*차)$/);
+      if (mBack) return `${mBack[1]}${mBack[2]}${parseInt(mBack[3],10)+1}${mBack[4]}`;
+      return book; // 차수 패턴 없으면 그대로
+    }
+
+    document.getElementById('assign-book').value = bumpCha(prefillSrc.book);
+    document.getElementById('assign-start').value = formatDate(new Date());
+    document.getElementById('assign-end').value = '';
+
+    document.querySelectorAll('input[name="assign-type"]').forEach(r => {
+      r.checked = (r.value === prefillSrc.type);
+    });
+    onTypeChange();
+
+    if (prefillSrc.type === 'SV' || prefillSrc.type === 'HV') {
+      document.getElementById('assign-sets').value     = prefillSrc.sets || '';
+      document.getElementById('assign-per-set').value  = prefillSrc.perSet || '';
+      document.getElementById('assign-memorize').value = prefillSrc.memorize || '';
+      document.getElementById('assign-recall').value   = prefillSrc.recall || '';
+      document.getElementById('assign-test').value     = prefillSrc.test || '';
+      document.getElementById('assign-test-type').value = prefillSrc.testType || '객관식';
+
+      if (prefillSrc.type === 'SV') {
+        const days = prefillSrc.studyDays;
+        [1,2,3,4,5].forEach(d => {
+          const el = document.getElementById(`sv-day-${d}`);
+          if (el) el.checked = days ? days.includes(d) : true;
+        });
+      }
+    }
+
+    _lastPickedBook = '';
+    renderBookQuickSelect();
+
+    openModal('modal-add-assign');
+    _resetBatchState();
+    setTimeout(()=>{
+      const bookEl = document.getElementById('assign-book');
+      bookEl.focus();
+      bookEl.select();
+    }, 100);
+    return;
   }
 
   // 입력 필드 초기화
