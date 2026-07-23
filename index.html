@@ -488,7 +488,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   <button class="hdr-hamburger" onclick="toggleSidebar()" aria-label="메뉴 열기">☰</button>
   <span class="hdr-logo">🏫</span>
   <span class="hdr-title">학원 학습 관리 시스템</span>
-  <span class="hdr-badge">v5.7</span>
+  <span class="hdr-badge">v5.8</span>
   <div class="hdr-right">
     <span style="font-size:10px;color:var(--sb-text2)">자동저장</span>
     <span class="hdr-save-status saved" id="save-status">● 저장됨</span>
@@ -3297,7 +3297,15 @@ function markAssignManuallyDoneFromModal() {
   if (!_editingAssignId) return;
   const assign = DB.assignments.find(a => a.id === _editingAssignId);
   if (!assign) return;
-  if (!confirm('이 교재를 완료 처리할까요?')) return;
+  // 같은 교재를 체크한 다른 학생들도 함께 완료 처리할지 확인
+  const checkedBulk = [...document.querySelectorAll('.bulk-edit-chk:checked')]
+    .map(chk => chk.dataset.assignId)
+    .filter(id => id && id !== _editingAssignId);
+
+  const confirmMsg = checkedBulk.length > 0
+    ? `이 교재를 완료 처리할까요?\n(체크된 다른 학생 ${checkedBulk.length}명도 함께 완료 처리됩니다)`
+    : '이 교재를 완료 처리할까요?';
+  if (!confirm(confirmMsg)) return;
 
   // 모달에 입력된 목표일 값을 우선 반영
   const endInput = document.getElementById('assign-end');
@@ -3305,8 +3313,20 @@ function markAssignManuallyDoneFromModal() {
   else if (!assign.endDate) assign.endDate = formatDate(new Date());
 
   assign.manuallyDone = true;
+
+  // 체크된 다른 학생들도 동일하게 완료 처리
+  checkedBulk.forEach(id => {
+    const other = DB.assignments.find(x => x.id === id);
+    if (!other) return;
+    if (endInput && endInput.value) other.endDate = endInput.value;
+    else if (!other.endDate) other.endDate = formatDate(new Date());
+    other.manuallyDone = true;
+  });
+
   saveAssignmentsFb();
-  toast('완료 처리되었습니다.', 'success');
+  toast(checkedBulk.length > 0
+    ? `${checkedBulk.length + 1}명 완료 처리되었습니다.`
+    : '완료 처리되었습니다.', 'success');
   closeModal('modal-add-assign');
   showPage(currentPage);
 }
@@ -3316,9 +3336,21 @@ function clearAssignManuallyDoneFromModal() {
   if (!_editingAssignId) return;
   const assign = DB.assignments.find(a => a.id === _editingAssignId);
   if (!assign) return;
+
+  const checkedBulk = [...document.querySelectorAll('.bulk-edit-chk:checked')]
+    .map(chk => chk.dataset.assignId)
+    .filter(id => id && id !== _editingAssignId);
+
   assign.manuallyDone = false;
+  checkedBulk.forEach(id => {
+    const other = DB.assignments.find(x => x.id === id);
+    if (other) other.manuallyDone = false;
+  });
+
   saveAssignmentsFb();
-  toast('진행중으로 되돌렸습니다.', 'warning');
+  toast(checkedBulk.length > 0
+    ? `${checkedBulk.length + 1}명 진행중으로 되돌렸습니다.`
+    : '진행중으로 되돌렸습니다.', 'warning');
   closeModal('modal-add-assign');
   showPage(currentPage);
 }
