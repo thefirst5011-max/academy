@@ -488,7 +488,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   <button class="hdr-hamburger" onclick="toggleSidebar()" aria-label="메뉴 열기">☰</button>
   <span class="hdr-logo">🏫</span>
   <span class="hdr-title">학원 학습 관리 시스템</span>
-  <span class="hdr-badge">v5.6</span>
+  <span class="hdr-badge">v5.7</span>
   <div class="hdr-right">
     <span style="font-size:10px;color:var(--sb-text2)">자동저장</span>
     <span class="hdr-save-status saved" id="save-status">● 저장됨</span>
@@ -819,18 +819,29 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
         </div>
       </div>
 
-      <!-- 교재 전용: 종료일 (선택 입력) -->
+      <!-- 교재 전용: 종료일(목표일) 입력 -->
       <div id="end-date-field" style="display:none;margin-bottom:12px">
         <div class="form-row form-row-2">
           <div class="form-group" style="margin-bottom:0">
-            <label class="form-label">종료일 <span style="font-weight:400;color:var(--text3)">(선택 — 나중에 입력 가능)</span></label>
+            <label class="form-label">목표일 <span style="font-weight:400;color:var(--text3)">(선택 — 나중에 입력 가능)</span></label>
             <input class="form-input" type="date" id="assign-end">
           </div>
-          <div class="form-group" style="margin-bottom:0;display:flex;align-items:flex-end">
-            <div style="font-size:11px;color:var(--text3);line-height:1.6;padding-bottom:2px">
-              과제 배부 시점에 종료일을 알면 입력하고,<br>모르면 비워두었다가 나중에 수정할 수 있습니다.
+          <div class="form-group" style="margin-bottom:0;display:flex;align-items:flex-end;gap:8px">
+            <div id="assign-done-btn-wrap" style="display:none;flex:1">
+              <button type="button" class="btn btn-success btn-sm" style="width:100%"
+                onclick="markAssignManuallyDoneFromModal()">✓ 완료 처리</button>
+            </div>
+            <div id="assign-done-hint" style="font-size:11px;color:var(--text3);line-height:1.6;padding-bottom:2px">
+              목표일이 지나도 자동완료 되지 않아요.<br>실제로 끝났을 때 완료 버튼을 눌러주세요.
             </div>
           </div>
+        </div>
+        <div id="assign-done-status" style="display:none;margin-top:8px;padding:7px 12px;background:#EAF4DF;
+          border:1px solid #C0DD97;border-radius:6px;font-size:12px;color:#1B5E20;display:flex;
+          align-items:center;justify-content:space-between;gap:8px">
+          <span>✓ 완료 처리된 과제입니다.</span>
+          <button type="button" class="btn btn-ghost btn-sm" style="padding:2px 8px;font-size:11px"
+            onclick="clearAssignManuallyDoneFromModal()">↩ 진행중으로 되돌리기</button>
         </div>
       </div>
 
@@ -3268,6 +3279,47 @@ function markAssignManuallyDone(assignId) {
   if (!assign.endDate) assign.endDate = formatDate(new Date()); // 목표일 없었으면 오늘로 기록
   saveAssignmentsFb();
   toast('완료 처리되었습니다.', 'success');
+  showPage(currentPage);
+}
+
+// 신규/수정 모달 열 때 완료처리 UI 초기화(숨김)
+function resetAssignDoneUI() {
+  const doneBtnWrap = document.getElementById('assign-done-btn-wrap');
+  const doneHint     = document.getElementById('assign-done-hint');
+  const doneStatus   = document.getElementById('assign-done-status');
+  if (doneBtnWrap) doneBtnWrap.style.display = 'none';
+  if (doneHint)    doneHint.style.display    = '';
+  if (doneStatus)  doneStatus.style.display  = 'none';
+}
+
+// 과제 수정 모달 안 "✓ 완료 처리" 버튼
+function markAssignManuallyDoneFromModal() {
+  if (!_editingAssignId) return;
+  const assign = DB.assignments.find(a => a.id === _editingAssignId);
+  if (!assign) return;
+  if (!confirm('이 교재를 완료 처리할까요?')) return;
+
+  // 모달에 입력된 목표일 값을 우선 반영
+  const endInput = document.getElementById('assign-end');
+  if (endInput && endInput.value) assign.endDate = endInput.value;
+  else if (!assign.endDate) assign.endDate = formatDate(new Date());
+
+  assign.manuallyDone = true;
+  saveAssignmentsFb();
+  toast('완료 처리되었습니다.', 'success');
+  closeModal('modal-add-assign');
+  showPage(currentPage);
+}
+
+// 과제 수정 모달 안 "↩ 진행중으로 되돌리기" 버튼
+function clearAssignManuallyDoneFromModal() {
+  if (!_editingAssignId) return;
+  const assign = DB.assignments.find(a => a.id === _editingAssignId);
+  if (!assign) return;
+  assign.manuallyDone = false;
+  saveAssignmentsFb();
+  toast('진행중으로 되돌렸습니다.', 'warning');
+  closeModal('modal-add-assign');
   showPage(currentPage);
 }
 
@@ -6205,6 +6257,7 @@ function openAddAssignModal(classId, studentId, prefillAssignId) {
     document.getElementById('assign-book').value = bumpCha(prefillSrc.book);
     document.getElementById('assign-start').value = formatDate(new Date());
     document.getElementById('assign-end').value = '';
+    resetAssignDoneUI();
 
     document.querySelectorAll('input[name="assign-type"]').forEach(r => {
       r.checked = (r.value === prefillSrc.type);
@@ -6245,6 +6298,7 @@ function openAddAssignModal(classId, studentId, prefillAssignId) {
   document.getElementById('assign-book').value = '';
   document.getElementById('assign-start').value = formatDate(new Date());
   document.getElementById('assign-end').value = '';   // 교재 종료일 초기화
+  resetAssignDoneUI();
   document.getElementById('assign-sets').value = '';
   document.getElementById('assign-per-set').value = '';
   document.getElementById('assign-memorize').value = '';
@@ -6628,10 +6682,19 @@ function openEditAssignModal(assignId) {
     }
   }
 
-  // 교재 종료일 채우기
+  // 교재 종료일(목표일) + 완료 처리 버튼/상태 채우기
   if (a.type === 'MAIN' || a.type === 'SUB') {
     document.getElementById('assign-end').value = a.endDate || '';
     syncEndDateMin();
+
+    const doneBtnWrap = document.getElementById('assign-done-btn-wrap');
+    const doneHint     = document.getElementById('assign-done-hint');
+    const doneStatus   = document.getElementById('assign-done-status');
+    const isDone = !!a.manuallyDone;
+
+    if (doneBtnWrap) doneBtnWrap.style.display = isDone ? 'none' : '';
+    if (doneHint)    doneHint.style.display    = isDone ? 'none' : '';
+    if (doneStatus)  doneStatus.style.display  = isDone ? 'flex' : 'none';
   }
 
   // 푸터 버튼: 수정 저장 버튼으로 교체 (문제6 해결)
