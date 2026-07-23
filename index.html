@@ -488,7 +488,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   <button class="hdr-hamburger" onclick="toggleSidebar()" aria-label="메뉴 열기">☰</button>
   <span class="hdr-logo">🏫</span>
   <span class="hdr-title">학원 학습 관리 시스템</span>
-  <span class="hdr-badge">v5.8</span>
+  <span class="hdr-badge">v5.9</span>
   <div class="hdr-right">
     <span style="font-size:10px;color:var(--sb-text2)">자동저장</span>
     <span class="hdr-save-status saved" id="save-status">● 저장됨</span>
@@ -5074,16 +5074,8 @@ function renderClassSummaryPage() {
 
   function isActive(a) {
     if (!a.startDate || a.startDate > today) return false;
-    const isVoca = a.type === 'SV' || a.type === 'HV';
-    if (isVoca) {
-      if (!a.sets) return false;
-      try {
-        const last = getLastStudyDate(a.startDate, a.sets,
-          a.type==='SV' ? (a.studyDays||null) : null, a.pausePeriods||null);
-        return last && last >= today;
-      } catch(e) { return false; }
-    }
-    return !a.endDate || a.endDate >= today;
+    // 완료 판정은 isAssignDone에 위임 (교재는 manuallyDone 기준, 보카는 학습일 기준)
+    return !isAssignDone(a);
   }
   function endDateOf(a) {
     const isVoca = a.type === 'SV' || a.type === 'HV';
@@ -5128,10 +5120,11 @@ function renderClassSummaryPage() {
             book: normalizeBook(a.book), startDate: a.startDate, end: endDateOf(a),
             sets: a.sets, perSet: a.perSet, memorize: a.memorize,
             recall: a.recall, test: a.test, testType: a.testType,
-            names: [],
+            names: [], overdue: false,
           };
           order.push(sigKey);
         }
+        if (isAssignOverdue(a)) groups[sigKey].overdue = true;
         groups[sigKey].names.push(stu.name);
         });
       });
@@ -5161,6 +5154,9 @@ function renderClassSummaryPage() {
         const period = row.end
           ? `(${shortDate(row.startDate)}~${shortDate(row.end)})`
           : `(${shortDate(row.startDate)}~)`;
+        const overdueDot = row.overdue
+          ? `<span title="목표일 지연중" style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#B83224;margin-left:5px;vertical-align:middle"></span>`
+          : '';
         const cond = condText(row);
 
         const isAll = row.names.length === students.length;
@@ -5202,7 +5198,7 @@ function renderClassSummaryPage() {
             <td class="sum-td sum-book-td${lastCls}${lastType}">${bookCell}</td>
             <td class="sum-td sum-target-td${lastCls}${lastType}">${targetHTML}</td>
             <td class="sum-td${lastCls}${lastType}" style="white-space:nowrap;color:var(--text3);font-size:11px">
-              <span class="${periodClass.trim()}">${period}</span>
+              <span class="${periodClass.trim()}">${period}</span>${overdueDot}
             </td>
             <td class="sum-td${lastCls}${lastType}" style="white-space:nowrap;color:var(--text3);font-size:11px">${cond}</td>
           </tr>`;
@@ -5452,16 +5448,8 @@ function buildClassAssignSummaryHTML(classId) {
 
   function isActive(a) {
     if (!a.startDate || a.startDate > today) return false;
-    const isVoca = a.type === 'SV' || a.type === 'HV';
-    if (isVoca) {
-      if (!a.sets) return false;
-      try {
-        const last = getLastStudyDate(a.startDate, a.sets,
-          a.type==='SV' ? (a.studyDays||null) : null, a.pausePeriods||null);
-        return last && last >= today;
-      } catch(e) { return false; }
-    }
-    return !a.endDate || a.endDate >= today;
+    // 완료 판정은 isAssignDone에 위임 (교재는 manuallyDone 기준, 보카는 학습일 기준)
+    return !isAssignDone(a);
   }
 
   let html = '';
@@ -5575,16 +5563,8 @@ function buildAssignSummaryTextCore(classIds) {
 
   function isActive(a) {
     if (!a.startDate || a.startDate > today) return false;
-    const isVoca = a.type === 'SV' || a.type === 'HV';
-    if (isVoca) {
-      if (!a.sets) return false;
-      try {
-        const last = getLastStudyDate(a.startDate, a.sets,
-          a.type==='SV' ? (a.studyDays||null) : null, a.pausePeriods||null);
-        return last && last >= today;
-      } catch(e) { return false; }
-    }
-    return !a.endDate || a.endDate >= today;
+    // 완료 판정은 isAssignDone에 위임 (교재는 manuallyDone 기준, 보카는 학습일 기준)
+    return !isAssignDone(a);
   }
 
   function endDateOf(a) {
@@ -5726,16 +5706,8 @@ function renderAssignSummaryBody() {
 
     function isActive(a) {
       if (!a.startDate || a.startDate > today) return false;
-      const isVoca = a.type === 'SV' || a.type === 'HV';
-      if (isVoca) {
-        if (!a.sets) return false;
-        try {
-          const last = getLastStudyDate(a.startDate, a.sets,
-            a.type==='SV' ? (a.studyDays||null) : null, a.pausePeriods||null);
-          return last && last >= today;
-        } catch(e) { return false; }
-      }
-      return !a.endDate || a.endDate >= today;
+      // 완료 판정은 isAssignDone에 위임 (교재는 manuallyDone 기준, 보카는 학습일 기준)
+      return !isAssignDone(a);
     }
     function endDateOf(a) {
       const isVoca = a.type === 'SV' || a.type === 'HV';
@@ -5792,10 +5764,11 @@ function renderAssignSummaryBody() {
             book: normalizeBook(a.book), startDate: a.startDate, end: endDateOf(a),
             sets: a.sets, perSet: a.perSet, memorize: a.memorize,
             recall: a.recall, test: a.test, testType: a.testType,
-            entries: [],
+            entries: [], overdue: false,
           };
           order.push(sigKey);
         }
+        if (isAssignOverdue(a)) groups[sigKey].overdue = true;
         groups[sigKey].entries.push({ clsId: stu.classId, stuName: stu.name });
         });
       });
@@ -5844,6 +5817,9 @@ function renderAssignSummaryBody() {
         const period = row.end
           ? `(${shortDate(row.startDate)}~${shortDate(row.end)})`
           : `(${shortDate(row.startDate)}~)`;
+        const overdueDot = row.overdue
+          ? `<span title="목표일 지연중" style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#B83224;margin-left:5px;vertical-align:middle"></span>`
+          : '';
         const cond     = condText(row);
         const condPlain = condTextPlain(row);
 
@@ -5890,7 +5866,7 @@ function renderAssignSummaryBody() {
             <td class="sum-td${lastType}${bookBorder}" style="white-space:nowrap;font-size:12px;color:var(--text2)">${clsNamesStr}</td>
             <td class="sum-td sum-target-td${lastType}${bookBorder}">${targetHTML}</td>
             <td class="sum-td${lastType}${bookBorder}" style="white-space:nowrap;color:var(--text3);font-size:11px">
-              <span class="${periodClass.trim()}" style="font-weight:700">${period}</span>
+              <span class="${periodClass.trim()}" style="font-weight:700">${period}</span>${overdueDot}
             </td>
             <td class="sum-td${lastType}${bookBorder}" style="white-space:nowrap;color:var(--text3);font-size:11px">${cond}</td>
           </tr>`;
