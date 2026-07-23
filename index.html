@@ -488,7 +488,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   <button class="hdr-hamburger" onclick="toggleSidebar()" aria-label="메뉴 열기">☰</button>
   <span class="hdr-logo">🏫</span>
   <span class="hdr-title">학원 학습 관리 시스템</span>
-  <span class="hdr-badge">v5.5</span>
+  <span class="hdr-badge">v5.6</span>
   <div class="hdr-right">
     <span style="font-size:10px;color:var(--sb-text2)">자동저장</span>
     <span class="hdr-save-status saved" id="save-status">● 저장됨</span>
@@ -2752,9 +2752,17 @@ function isAssignDone(a) {
     const last = getLastStudyDate(a.startDate, a.sets, a.type==='SV' ? (a.studyDays||null) : null, a.pausePeriods||null);
     return last < today;
   } else {
-    // 교재: endDate 있고 오늘보다 과거면 완료
-    return !!(a.endDate && a.endDate < today);
+    // 교재(주교재/부교재): endDate는 "목표일"일 뿐, 지나도 자동완료 아님
+    // 선생님이 "완료 처리" 버튼을 눌러야만(manuallyDone=true) 완료로 처리됨
+    return !!a.manuallyDone;
   }
+}
+
+// 교재(MAIN/SUB) 종료일(목표일)이 지났는데 아직 수동완료 안 된 경우 = "지연"
+function isAssignOverdue(a) {
+  if (a.type === 'SV' || a.type === 'HV') return false;
+  const today = formatDate(new Date());
+  return !!(a.endDate && a.endDate < today && !a.manuallyDone);
 }
 
 // ══════════════════════════════════════════════════════════
@@ -2816,21 +2824,29 @@ function renderAssignPage() {
               ? (a.sets ? getLastStudyDate(a.startDate, a.sets, a.type==='SV' ? (a.studyDays||null) : null, a.pausePeriods||null) : '—')
               : (a.endDate || null);
 
-            const done = isAssignDone(a);
+            const done    = isAssignDone(a);
+            const overdue = isAssignOverdue(a); // 교재: 목표일 지났는데 아직 수동완료 안 함
             const chipStart = `<span style="font-size:11px;color:var(--text2);white-space:nowrap">${a.startDate} 시작</span>`;
             const chipEnd = isTextbook
-              ? (endDate
-                  ? `<span style="font-size:11px;color:#2A5E3E;font-weight:700;white-space:nowrap">~ ${endDate} 완료</span>`
-                  : `<span style="font-size:11px;color:#8A5410;font-weight:700;white-space:nowrap">진행중</span>`)
+              ? (done
+                  ? `<span style="font-size:11px;color:#2A5E3E;font-weight:700;white-space:nowrap">~ ${endDate||''} 완료</span>`
+                  : overdue
+                    ? `<span style="font-size:11px;color:#B83224;font-weight:700;white-space:nowrap">🟠 목표일(${endDate}) 지연중</span>`
+                    : endDate
+                      ? `<span style="font-size:11px;color:#8A5410;font-weight:700;white-space:nowrap">진행중 · 목표 ${endDate}</span>`
+                      : `<span style="font-size:11px;color:#8A5410;font-weight:700;white-space:nowrap">진행중</span>`)
               : (done
                   ? `<span style="font-size:11px;color:#2A5E3E;font-weight:700;white-space:nowrap">~ ${endDate} 완료</span>`
                   : `<span style="font-size:11px;color:var(--text2);white-space:nowrap">~ ${endDate}</span>`);
 
             const endDateBtn = isTextbook
               ? `<button class="btn btn-ghost btn-sm" style="padding:2px 8px;font-size:10px"
-                   onclick="openEndDateInput('${a.id}','${endDate||''}','${a.startDate}')">${endDate ? '종료일 수정' : '✏️ 종료일 입력'}</button>
-                 ${endDate ? `<button class="btn btn-ghost btn-sm" style="padding:2px 8px;font-size:10px;color:var(--amber)"
-                   onclick="clearEndDate('${a.id}')">↩ 진행중</button>` : ''}`
+                   onclick="openEndDateInput('${a.id}','${endDate||''}','${a.startDate}')">${endDate ? '목표일 수정' : '✏️ 목표일 입력'}</button>
+                 ${!done
+                   ? `<button class="btn btn-success btn-sm" style="padding:2px 8px;font-size:10px"
+                        onclick="markAssignManuallyDone('${a.id}')">✓ 완료 처리</button>`
+                   : `<button class="btn btn-ghost btn-sm" style="padding:2px 8px;font-size:10px;color:var(--amber)"
+                        onclick="clearEndDate('${a.id}')">↩ 진행중으로</button>`}`
               : '';
 
             let extraChips = '';
@@ -3223,7 +3239,7 @@ function saveEndDate(assignId, startDate) {
   if (!assign) { toast('과제를 찾을 수 없습니다.', 'error'); return; }
   assign.endDate = endDate;
   saveAssignmentsFb();
-  toast(`종료일이 ${endDate}로 저장되었습니다.`, 'success');
+  toast(`목표일이 ${endDate}로 저장되었습니다.`, 'success');
   showPage(currentPage);
 }
 
@@ -3233,12 +3249,25 @@ function cancelEndDate(assignId) {
 }
 
 // 종료일 삭제 (진행중으로 되돌리기)
+// 완료 취소 → 다시 진행중으로 되돌리기 (목표일은 그대로 유지)
 function clearEndDate(assignId) {
   const assign = DB.assignments.find(a => a.id === assignId);
   if (!assign) return;
-  assign.endDate = null;
+  assign.manuallyDone = false;
   saveAssignmentsFb();
-  toast('종료일이 삭제되었습니다. 진행중으로 변경됩니다.', 'warning');
+  toast('진행중으로 되돌렸습니다.', 'warning');
+  showPage(currentPage);
+}
+
+// 교재(주교재/부교재) 완료 처리 — 선생님이 직접 확인 후에만 완료로 표시
+function markAssignManuallyDone(assignId) {
+  const assign = DB.assignments.find(a => a.id === assignId);
+  if (!assign) return;
+  if (!confirm('이 교재를 완료 처리할까요?')) return;
+  assign.manuallyDone = true;
+  if (!assign.endDate) assign.endDate = formatDate(new Date()); // 목표일 없었으면 오늘로 기록
+  saveAssignmentsFb();
+  toast('완료 처리되었습니다.', 'success');
   showPage(currentPage);
 }
 
