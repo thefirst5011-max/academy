@@ -488,7 +488,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   <button class="hdr-hamburger" onclick="toggleSidebar()" aria-label="메뉴 열기">☰</button>
   <span class="hdr-logo">🏫</span>
   <span class="hdr-title">학원 학습 관리 시스템</span>
-  <span class="hdr-badge">v5.9</span>
+  <span class="hdr-badge">v6.1</span>
   <div class="hdr-right">
     <span style="font-size:10px;color:var(--sb-text2)">자동저장</span>
     <span class="hdr-save-status saved" id="save-status">● 저장됨</span>
@@ -5269,7 +5269,11 @@ function renderStudentSummaryPage() {
         <button class="btn btn-sm ${_stuSummaryViewMode==='class'?'btn-primary':'btn-ghost'}" onclick="setStuSummaryViewMode('class')">수업요약</button>
         <button class="btn btn-sm ${_stuSummaryViewMode==='student'?'btn-primary':'btn-ghost'}" onclick="setStuSummaryViewMode('student')">학생요약</button>
       </div>
-      ${_stuSummaryViewMode==='assign' ? `<button class="btn btn-ghost btn-sm" style="color:var(--blue)" onclick="copyAssignSummary()">📋 텍스트 복사</button>` : ''}
+      ${_stuSummaryViewMode==='assign' ? `
+        <button class="btn btn-ghost btn-sm" style="color:var(--blue)" onclick="copyAssignSummary()">📋 텍스트 복사</button>
+        <button class="btn btn-success btn-sm" onclick="downloadAssignSummaryExcel()">📥 현재 화면 엑셀</button>
+      ` : ''}
+      <button class="btn btn-success btn-sm" style="margin-left:auto" onclick="downloadAllAssignmentsExcel()">📥 전체 학습내역 다운로드</button>
     </div>`;
 
   const body = _stuSummaryViewMode === 'assign'  ? renderAssignSummaryBody()
@@ -5697,10 +5701,124 @@ function copyAssignSummary() {
     .catch(() => toast('복사에 실패했습니다.', 'error'));
 }
 
+// 과제요약을 엑셀(CSV, UTF-8 BOM)로 다운로드
+let _assignSummaryCsvRows = [];
+function downloadAssignSummaryExcel() {
+  if (!_assignSummaryCsvRows || _assignSummaryCsvRows.length === 0) {
+    toast('다운로드할 데이터가 없습니다.', 'warning');
+    return;
+  }
+  const header = ['유형','교재명','반','대상','시작일','목표일(종료일)','상태','조건'];
+  downloadCsv(`과제요약_${formatDate(new Date())}.csv`, [header, ..._assignSummaryCsvRows]);
+  toast('엑셀 파일이 다운로드되었습니다.', 'success');
+}
+
+// CSV 값 이스케이프 (쉼표/줄바꿈/따옴표 포함 시 안전 처리)
+function csvEsc(v) {
+  const s = String(v ?? '');
+  if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
+// 2차원 배열을 CSV 파일로 다운로드 (UTF-8 BOM 포함 — 엑셀 한글 깨짐 방지)
+function downloadCsv(filename, rows) {
+  const lines = rows.map(row => row.map(csvEsc).join(','));
+  const csvContent = '\uFEFF' + lines.join('\r\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// 지금까지 학생들이 받은 모든 과제(진행중+완료 전부, 유형 무관) 전체 내역 다운로드
+function downloadAllAssignmentsExcel() {
+  if (!DB.assignments || !DB.assignments.length) {
+    toast('다운로드할 학습 내역이 없습니다.', 'warning');
+    return;
+  }
+
+  const classNameMap = {};
+  DB.classes.forEach(c => { classNameMap[c.id] = c.name; });
+  const studentMap = {};
+  DB.students.forEach(s => { studentMap[s.id] = s; });
+
+  function condTextOf(a) {
+    const isVoca = a.type === 'SV' || a.type === 'HV';
+    if (!isVoca) return '';
+    const parts = [];
+    if (a.sets)     parts.push(`${a.sets}세트`);
+    if (a.perSet)   parts.push(`1set ${a.perSet}`);
+    if (a.memorize) parts.push(`암기${a.memorize}`);
+    if (a.recall)   parts.push(`리콜${a.recall}`);
+    if (a.test)     parts.push(`${a.testType||'테스트'} ${a.test}점`);
+    return parts.join(' · ');
+  }
+  function endDateOf(a) {
+    const isVoca = a.type === 'SV' || a.type === 'HV';
+    if (isVoca) {
+      try {
+        return getLastStudyDate(a.startDate, a.sets,
+          a.type==='SV' ? (a.studyDays||null) : null, a.pausePeriods||null) || '';
+      } catch(e) { return ''; }
+    }
+    return a.endDate || '';
+  }
+
+  // 반 → 학생 이름순 정렬, 각 학생 내에서는 유형 → 시작일순
+  const T_ORDER = { SV:0, HV:1, MAIN:2, SUB:3 };
+  const sortedStudents = DB.students.slice().sort((a,b) => {
+    const clsA = classNameMap[a.classId] || '';
+    const clsB = classNameMap[b.classId] || '';
+    if (clsA !== clsB) return clsA.localeCompare(clsB, 'ko');
+    return a.name.localeCompare(b.name, 'ko');
+  });
+
+  const rows = [];
+  sortedStudents.forEach(stu => {
+    const myAssigns = DB.assignments.filter(a => a.studentId === stu.id)
+      .slice().sort((a,b) => {
+        const t = (T_ORDER[a.type]??9) - (T_ORDER[b.type]??9);
+        if (t !== 0) return t;
+        return (a.startDate||'').localeCompare(b.startDate||'');
+      });
+
+    myAssigns.forEach(a => {
+      const done    = isAssignDone(a);
+      const overdue = isAssignOverdue(a);
+      const status  = done ? '완료' : (overdue ? '지연' : '진행중');
+      rows.push([
+        classNameMap[stu.classId] || '',
+        stu.name,
+        TYPE_LABELS[a.type] || a.type,
+        a.book || '',
+        a.startDate || '',
+        endDateOf(a),
+        status,
+        condTextOf(a),
+      ]);
+    });
+  });
+
+  if (!rows.length) {
+    toast('다운로드할 학습 내역이 없습니다.', 'warning');
+    return;
+  }
+
+  const header = ['반','학생명','유형','교재명','시작일','종료일(목표일)','상태','조건'];
+  downloadCsv(`전체_학습내역_${formatDate(new Date())}.csv`, [header, ...rows]);
+  toast(`전체 학습내역 ${rows.length}건이 다운로드되었습니다.`, 'success');
+}
+
 
 // 과제요약 (전체 반, 유형별 교재 리스트) — 수업요약과 동일한 표(rowspan) 디자인
 function renderAssignSummaryBody() {
   try {
+    _assignSummaryCsvRows = []; // 엑셀 다운로드용 데이터 초기화
     const today   = formatDate(new Date());
     const T_ORDER = ['SV','HV','MAIN','SUB'];
 
@@ -5875,6 +5993,15 @@ function renderAssignSummaryBody() {
         let namesStr = names.join(' ');
         if (isAllOneClass) namesStr += ' (전부표시)';
         copyText += [isFirstOfBook ? row.book : '', clsNamesStr, namesStr, period, condPlain].join('\t') + '\n';
+
+        // 엑셀 다운로드용 데이터 (매 행마다 유형/교재명 모두 채움)
+        _assignSummaryCsvRows.push([
+          TYPE_LABELS[group.type], row.book, clsNamesStr,
+          isAllOneClass ? '전체' : names.join(', '),
+          row.startDate || '', row.end || '',
+          row.overdue ? '지연' : (row.end ? '완료예정' : ''),
+          condPlain
+        ]);
       });
       copyText += '\n';
     });
